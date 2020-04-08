@@ -50,3 +50,20 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+
+# Folder junk
+linux-4.19.3.tar.xz
+myHome.img
+my_initramfs.cpio.gz
+pnl-tp.img
+qemu-run-externKernel-virtfs.sh
+share
+
+# Latex compilation files
+
+*.aux
+*.bbl
+*.blg
+*.log
+*.pdf

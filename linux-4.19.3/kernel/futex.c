@@ -214,6 +214,25 @@ struct futex_pi_state {
 	union futex_key key;
 } __randomize_layout;
 
+
+/*
+ * The PI object:
+ */
+struct futex_state {
+	struct list_head list;
+	struct rt_mutex mutex;
+	struct task_struct *owner;
+	atomic_t refcount;
+
+	union futex_key *key;
+} __randomize_layout;
+
+
+static LIST_HEAD(state_list);
+static DEFINE_MUTEX(state_lock);
+
+
+
 /**
  * struct futex_q - The hashed futex queue entry, one per waiting task
  * @list:		priority-sorted list of tasks waiting on this futex
@@ -775,6 +794,55 @@ static int get_futex_value_locked(u32 *dest, u32 __user *from)
 
 	return ret ? -EFAULT : 0;
 }
+
+
+/*
+ * Owner Tracker code:
+ */
+
+int fetch_state(union futex_key *key, struct futex_state **state_ret)
+{
+	struct futex_state *state;
+
+	list_for_each_entry(state, &state_list, list) {
+		if (match_futex(key, state->key)) {
+			*state_ret = state;
+			return 0;
+		}
+	}
+	*state_ret = NULL;
+	return 1;
+}
+
+
+int add_state(struct futex_state *state)
+{		
+
+	list_add(&state->list, &state_list);
+	return 0;
+}
+
+
+
+
+int fixup_state_owner(u32 uval, struct futex_state *state)
+{
+	struct task_struct *new_owner = find_get_task_by_vpid(uval);
+	u32 last_tid = -1;
+
+	if(state->owner)
+		last_tid = task_pid_vnr(state->owner);
+		
+	pr_info(" NewOwner=%d LastOwner=%d futex_state=%p\n" 
+			,uval, last_tid, state);
+	
+	state->owner = new_owner;
+
+	return 0;
+
+}
+
+
 
 
 /*
@@ -2616,7 +2684,11 @@ static int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val,
 	struct futex_hash_bucket *hb;
 	struct futex_q q = futex_q_init;
 	int ret;
-
+	struct futex_state *state = NULL;
+	union futex_key *key;
+	u32 valeur;
+	
+	get_user(valeur, uaddr);
 	if (!bitset)
 		return -EINVAL;
 	q.bitset = bitset;
@@ -2632,6 +2704,28 @@ static int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val,
 					     current->timer_slack_ns);
 	}
 
+
+	/* Allocate for a key and get the key */
+	key = kzalloc(sizeof(union futex_key), GFP_KERNEL);
+	ret = get_futex_key(uaddr, 0, key, VERIFY_READ);
+	
+	mutex_lock(&state_lock);
+
+	/* Check if the key match a state or it's the first task to wait for this futex*/
+	fetch_state(key, &state);
+	if (!state) {
+		/* It's the first task to wait so we create the state */
+		state = kzalloc(sizeof(struct futex_state), GFP_KERNEL);
+		state->key = key;
+		add_state(state);
+	} else {
+		/* Delete the key because the state already exist */
+		kfree(key);
+	}
+	
+	mutex_unlock(&state_lock);
+
+
 retry:
 	/*
 	 * Prepare to wait on uaddr. On success, holds hb lock and increments
@@ -2643,6 +2737,9 @@ retry:
 
 	/* queue_me and wait for wakeup, timeout, or a signal. */
 	futex_wait_queue_me(hb, &q, to);
+	
+	/* Put this task as owner of futex after wakeup*/
+	fixup_state_owner(task_pid_vnr(current), state);
 
 	/* If we were woken (and unqueued), we succeeded, whatever. */
 	ret = 0;
