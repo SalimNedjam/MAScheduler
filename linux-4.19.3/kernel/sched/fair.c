@@ -563,6 +563,8 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	rb_erase_cached(&se->run_node, &cfs_rq->tasks_timeline);
 }
 
+// $PICK
+
 struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 {
 	struct rb_node *left = rb_first_cached(&cfs_rq->tasks_timeline);
@@ -570,7 +572,13 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 	if (!left)
 		return NULL;
 
-	return rb_entry(left, struct sched_entity, run_node);
+	struct sched_entity *se = rb_entry(left, struct sched_entity, run_node);
+
+	struct task_struct *ts = container_of(se, struct task_struct, se);
+	
+	pr_info("picked task : %d\n", ts->pid);
+
+	return se;
 }
 
 static struct sched_entity *__pick_next_entity(struct sched_entity *se)
@@ -802,6 +810,7 @@ static void update_tg_load_avg(struct cfs_rq *cfs_rq, int force)
 static void update_curr(struct cfs_rq *cfs_rq)
 {
 	struct sched_entity *curr = cfs_rq->curr;
+
 	u64 now = rq_clock_task(rq_of(cfs_rq));
 	u64 delta_exec;
 
