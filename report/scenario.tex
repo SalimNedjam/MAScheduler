@@ -1,9 +1,9 @@
 \section*{Scénario}
 
-L'étude de scénario a été une étape importante dans notre réflexion d'optimisation de l'ordonnanceur. Cette démarche nous a permis de lever situations et cas particuliers, et ont été les éléments fondamentaux dans la conception de notre solution.
+L'étude de scénario a été une étape importante dans notre réflexion d'optimisation de l'ordonnanceur. Cette démarche nous a permis de lever situations et cas particuliers pour la conception de notre solution.
 \\
 
-Pour simplifier, dans la suite du rapport nous considérons être sur un monoprocesseur.
+Pour simplifier, dans la suite du rapport nous considérons être sur un monoprocesseur et les tâches bloquées par le verrou sont des threads.
 \\
 
 Considérons deux tâches : un éditeur de texte (A) et un compilateur (B). La tâche A détient un verrou et est moins prioritaire que B. La tâche A bloque plusieurs autres tâches dans son exécution, elle est donc la cible de notre optimisation : il faut trouver un moyen de favoriser A lors des élections pour débloquer plus rapidement les autres tâches endormies.
@@ -15,13 +15,15 @@ En forçant le placement de la tâche à gauche de l'arbre on s'assure sans cont
 Une réponse à ce problème peut être d'influencer sur la priorité d'origine attribuée à la tâche A. Par exemple, A s'exécute avec une priorité de 120 (valeur par défaut) et B avec une priorité de 100. On peut très bien envisager d'augmenter la priorité de A pour la rendre plus prioritaire sans dépasser B. Augmenter la priorité de 10 semble être un bon choix, A aura donc une priorité de 110. Cependant, dans cet exemple l'intérêt est limité, cela devient plus intéressant si l'on ajoute une nouvelle tâche C, de priorité 120. Les tâches A et C commenceront donc avec la même priorité, mais A verra sa priorité augmenter rapidement lorsque des tâches se bloqueront sur le verrou qu'elle détient. Ainsi, la tâche A sera favorisée face à des tâches de priorité équivalentes mais ne sera pas un inconvénient pour les autres tâches.
 
 Considérons maintenant que la tâche C est semblable à la tâche A, soit un autre éditeur de texte qui bloquera elle aussi des tâches par la prise d'un verrou. Les deux tâches se verront donc voir chacune augmenter leur priorité de 10. Cependant, par la prise de son verrou, A peut peut-être bloquer plus de tâche que C, mais du point de vue du scheduler A et C sont sur un pied d'égalité en terme de priorité. De ce constat est né l'idée d'influencer la priorité de la tâche en fonction du nombre de tâches bloquées par son verrou. 
-
-On introduit donc un système de \textbf{Charge}, plus une tâche a une charge élevée, plus sa priorité évolue en conséquent. La priorité d'une tâche sera augmentée dans une intervalle de 0 à 10 en fonction de sa charge. Reste à établir comment décider de la charge d'une tâche. 
-
-Une première idée aurait été de calculer cette charge avec un système de pourcentage. Le principe aurait été de déterminer avec un compteur, au fur et à mesure de la vie d'exécution de la tâche A, le nombre total de tâche qui peuvent potentiellement se bloquer sur le verrou. Ainsi, un deuxième compteur indiquant le nombre de tâches actuellement bloquées permettrait de calculer un pourcentage de charge. Une simple division par 10 de la charge aurait permis de calculer l'augmentation de la priorité. Mais cette solution pose le problème de garder un compteur fiable sur le nombre de tâches pouvant potentiellement se bloquer sur le verrou. De plus le pourcentage de charge n'est pas très parlant. Imaginons que A et C ont toutes les deux une charge de 100\% mais A bloque 100 tâches contre 10 pour C. Bien que A devrait être plus favorisé il n'en reste que A et C auront toutes les deux une priorité augmentée de 10.
-
-Plutôt que de se perdre dans de lourd calcul de charge avec des pourcentages, nous avons décidé de s'orienter vers une implémentation plus simple. La charge correspondra au nombre total de tâches couramment bloquées par la tâche propriétaire du verrou. Ainsi, la priorité ajouté à une tâche restera toujours dans une intervalle de 0 à 10 mais fonctionnera par palier : sur des échelons restant encore à définir, on peut envisager que toutes les 5 tâches bloquées la priorité se voit augmenter de 1, plafonnant donc l'augmentation à 50 tâches bloquées.
 \\
 
-Cette dernière vision de l'implémentation permet d'être le plus juste pour chaque tâche. Le CFS est connu pour être un scheduler très équitable, notre solution ne doit pas dénaturer cette acquis.
+On introduit donc un système de \textbf{charge}, plus une tâche a une charge élevée, plus sa priorité évolue. La priorité d'une tâche sera augmentée dans une intervalle de 0 à 10 en fonction de sa charge. Reste à établir comment calculer la charge d'une tâche. 
+
+Une première idée aurait été de calculer cette charge avec un système de pourcentage. Un compteur qui, au fur et à mesure de la vie d'exécution de la tâche A, compterait le nombre total de tâche qui peuvent potentiellement se bloquer sur le verrou. Un deuxième compteur, indiquant le nombre de tâches actuellement bloquées, permettrait de calculer un pourcentage de charge. Une simple division par 10 de la charge aurait permis de calculer l'augmentation de la priorité. Mais cette solution pose le problème de garder un compteur fiable sur le nombre de tâches pouvant potentiellement se bloquer sur le verrou. De plus le pourcentage de charge n'est pas très parlant. Imaginons que A et C ont toutes les deux une charge de 100\% mais A bloque 100 tâches contre 10 pour C. Bien que A devrait être plus favorisé il n'en reste que A et C auront toutes les deux une priorité augmentée de 10.
+\\
+
+Plutôt que de se perdre dans de lourd calcul de charge avec des pourcentages, nous avons décidé de s'orienter vers une implémentation plus simple. La charge correspondra au nombre total de tâches couramment bloquées sur le verrou. Ainsi, la priorité ajouté à la tâche propriétaire du verrou restera toujours dans une intervalle de 0 à 10 mais fonctionnera par palier : sur des échelons restant encore à définir, on peut envisager que toutes les 5 tâches bloquées la priorité se voit augmenter de 1, plafonnant ainsi l'augmentation à 50 tâches bloquées.
+\\
+
+Cette dernière vision de l'implémentation permet d'être le plus juste pour chaque tâche. Le CFS est connu pour être un scheduler très équitable, notre solution ne doit pas dénaturer cet acquis.
 
