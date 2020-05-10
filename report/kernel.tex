@@ -1,0 +1,13 @@
+\section*{Kernel et futex}
+La Glibc communique avec le kernel à travers des appels systèmes, elle fournit 
+en paramètre l'adresse virtuelle de l'espace utilisateur qui contient la 
+valeur du lock.
+\\
+
+Le futex associée est identifié avec un futex\_key qui permet d'identifié un futex
+d'une maniere unique que ça soit dans un meme espace d'adressage ou bien d'un
+segement de mémoire partagé, elle est ensuite utilisée dans un bucket pour lister
+tous les processus en attente d'un futex donné.
+\\
+
+Expliquer le futex.c et son fonctionnement (du moins ce qui nous intéresse).

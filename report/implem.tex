@@ -1,3 +1,50 @@
 \section*{Implémentation}
 
-Ici nous parlons de l'implémentation concrète de notre solution. Majoritairement dans le fichier \verb|futex.c|, nous exposerons structures et fonctions qui nous ont permis de créer le nouveau fonctionnement de l'ordonnancement.
+Pour permettre au kernel de suivre l'évolution du possesseur du lock, Il a
+fallu créer une structure \verb|futex_state| pour gérer l'état d'un futex. 
+Voici la structure :
+\begin{lstlisting}
+struct futex_state {
+	struct list_head list;
+	struct rt_mutex mutex;
+	struct task_struct *owner;
+	struct kref refcount;
+	union futex_key *key;
+};
+\end{lstlisting}
+
+Cette structure contient toutes les informations nécessaires au scheduler pour 
+choisir la bonne cible.
+\\
+Pour manipulé cette structure il faut utiliser un mutex, ceci va permettre 
+d'éviter qu'il y ai un accès concurrent à cette structure, il a fallu aussi 
+protéger la supression des structure pour eviter de libérer une zone mémoire 
+déjà utilisé par un autre thread, , de là est venu l'idée de d'utiliser des kref
+(compteur de référence), ce qui va permettre de libérer les espaces mémoires dès
+que le nombre de référence sur une structure futex\_state tombe à zero.
+Dans notre cas l'utilisation des shrinker est impossible, car on ne peut pas se 
+permettre de supprimer ou bien de liberer une réferance d'un objet en cours 
+d'utilisation car celà peut compromettre tous le mécanisme de verouillage des 
+futex.
+\\
+
+D'un autre coté il a fallu penser à une manière intelligente d'allouer de la 
+mémoire, nous avons opté pour un slab pour éviter la fragmentation causé par 
+l'allocation et la désallocation de la mémoire, le principe est de garder 
+la mémoire qui a était désallouer pour l'utiliser ultérieurement lors d'une 
+demande d'allocation d'un objet du même type dans notre cas la structure 
+futex\_state.
+\\
+
+Pour que les informations transmises reflètent l'état exact du futex
+à un instant \textit{t}, il faut que la structure \verb|futex_state| soit mise à jour
+à chaque changement du propriétaire du futex. Ainsi, chaque processus avant de 
+s'endormir sur un futex indique dans un champ de sa structure task l'adresse de 
+la structure \verb|futex_state| du futex sur lequel il va s'endormir.
+\\
+
+Par conséquent, chaque processus après avoir manipulé le futex 
+devra chercher dans une liste chaînée la structure \verb|futex_state| associée au 
+futex et la mettre à jour avec la valeur courante du lock. Ainsi, à tout moment 
+le kernel peut savoir sur quel futex un processus prioritaire est endormi et quel
+est le processus qui détient ce futex.

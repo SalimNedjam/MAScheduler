@@ -1,0 +1,18 @@
+\section*{Problématique}
+
+Le problème se présente quand plusieurs processus souhaitent accéder à une même
+ressource critique. 
+en effet si le processus qui detient le futex bloque un ou plusieurs processus 
+d'avancer, Il est donc important de faire passer en priorité dans les 
+élections le processus détenant cette section pour arrivé au point de 
+liberation de la ressource afin de débloquer les autres processus tout en 
+respectant la prévalence des autres processus indépendants pour respecter la 
+sémantique du CFS  (Completly Fair scheduler).
+Il faudra aussi prendre en compte les processus qui abuse de se mécanisme et 
+ceux qui ne relache pas le futex dans un temps fini. 
+\\
+
+Pour résoudre ce problème il a fallu dans un premier temps permettre au
+kernel de connaître l'identité du processus propriétaire du verrou.
+Ensuite le scheduler devait utiliser cette information et agir en conséquence.
+\\
