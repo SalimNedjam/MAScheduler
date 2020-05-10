@@ -576,7 +576,7 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 
 	struct task_struct *ts = container_of(se, struct task_struct, se);
 	
-	pr_info("picked task : %d\n", ts->pid);
+	//pr_info("picked task : %d\n", ts->pid);
 
 	return se;
 }
