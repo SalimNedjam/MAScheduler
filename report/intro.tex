@@ -1,25 +1,25 @@
 \section*{Introduction}
-L'une des tâches les plus importantes qu'un OS doit faire est de faciliter le
-multi-tasking.
-C'est l'ordonnanceur qui s'occupe de cette tâche critique.
-
-L'ordonnanceur à pour but premier de performer cette fonction le plus
-efficacement possible en utilisant le moins de ressources, et en respectant les
-trois principes qui sont Safety, Liveness et Fairness.
-\\
-
-Les objectifs de notre projet ont donc été les suivants: optimiser les
-décisions de l'ordonnanceur pour apporter une élection plus favorable aux
-processus détenant un verrou.
-\\
-
-Nous verrons tout d'abord dans ce rapport les différents aspects de la Glibc
-qui permet de gérer la synchronisation. 
-
-Ensuite, nous aborderons les différents points qui font le lien entre la Glibc
-et le kernel. 
-
-Nous introduirons le scheduler et son fonctionnement, ainsi que les différents
-scénarios.
-
-Enfin, nous présenterons notre implémentation et les benchmarks.
+	L'une des tâches les plus importantes qu'un OS doit faire est de faciliter le
+	multi-tasking.
+	C'est l'ordonnanceur qui s'occupe de cette tâche critique.
+	
+	L'ordonnanceur a pour but premier de performer cette fonction le plus
+	efficacement possible en utilisant le moins de ressources, et en respectant les
+	trois principes qui sont Safety, Liveness et Fairness.
+	\\
+	
+	Les objectifs de notre projet ont donc été les suivants: optimiser les
+	décisions de l'ordonnanceur pour apporter une élection plus favorable aux
+	processus détenant un verrou.
+	\\
+	
+	Nous verrons tout d'abord dans ce rapport les différents aspects de la Glibc
+	qui permet de gérer la synchronisation. 
+	
+	Ensuite, nous aborderons les différents points qui font le lien entre la Glibc
+	et le kernel. 
+	
+	Nous introduirons le scheduler et son fonctionnement, ainsi que les différents
+	scénarios.
+	
+	Enfin, nous présenterons notre implémentation et les benchmarks.

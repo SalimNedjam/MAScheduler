@@ -16,24 +16,11 @@ struct futex_state {
 Cette structure contient toutes les informations nécessaires au scheduler pour 
 choisir la bonne cible.
 \\
-Pour manipulé cette structure il faut utiliser un mutex, ceci va permettre 
-d'éviter qu'il y ai un accès concurrent à cette structure, il a fallu aussi 
-protéger la supression des structure pour eviter de libérer une zone mémoire 
-déjà utilisé par un autre thread, , de là est venu l'idée de d'utiliser des kref
-(compteur de référence), ce qui va permettre de libérer les espaces mémoires dès
-que le nombre de référence sur une structure futex\_state tombe à zero.
-Dans notre cas l'utilisation des shrinker est impossible, car on ne peut pas se 
-permettre de supprimer ou bien de liberer une réferance d'un objet en cours 
-d'utilisation car celà peut compromettre tous le mécanisme de verouillage des 
-futex.
-\\
 
-D'un autre coté il a fallu penser à une manière intelligente d'allouer de la 
-mémoire, nous avons opté pour un slab pour éviter la fragmentation causé par 
-l'allocation et la désallocation de la mémoire, le principe est de garder 
-la mémoire qui a était désallouer pour l'utiliser ultérieurement lors d'une 
-demande d'allocation d'un objet du même type dans notre cas la structure 
-futex\_state.
+Un mutex dans la structure est ici nécessaire, permettant d'éviter les accès concurrents lors de la manipulation de celle-ci. Pour protéger la suppression des structures, et ainsi éviter de libérer une zone mémoire déjà utilisée par un autre thread, nous utilisons des \verb|kref|. Ce compteur de référence va permettre de libérer les espaces mémoires dès que le nombre de références sur une structure \verb|futext_state| atteint zéro.
+
+Dans notre cas l'utilisation des shrinker, pour optimiser l'utilisation
+mémoire, n'est pas possible. En effet, on ne peut pas se permettre de supprimer ou bien de libérer une référence d'un objet en cours d'utilisation, cela peut compromettre tout le mécanisme de verrouillage des futex.
 \\
 
 Pour que les informations transmises reflètent l'état exact du futex
