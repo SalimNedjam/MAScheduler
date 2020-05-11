@@ -1,13 +1,25 @@
 \section*{Kernel et futex}
 La Glibc communique avec le kernel à travers des appels systèmes, elle fournit 
-en paramètre l'adresse virtuelle de l'espace utilisateur qui contient la 
-valeur du lock.
+en paramètre l'adresse virtuelle de l'espace utilisateur qui contient la valeur 
+du lock.
 \\
+Lorsqu'un processus veut prendre un mutex, ce dernier fait appel à une fonction 
+de la Glibc qui essaye de faire un test and set atomique pour essayer d'acquérir
+le verrou sans que le kernel ne soit mit au courant de l'existence du futex, 
+par contre le prochain thread qui essaye de 
+prendre le verrou sollicitera le kernel, il devra alors faire un appel 
+système avec une adresse uaddr du futex, ce dernier utilise cette adresse pour 
+générer et identifier le futex d'une manière unique grace à une futex\_key que 
+ça soit dans un même espace d'adressage ou bien d'un segment de mémoire 
+partagé, la clé est ensuite utilisée dans un bucket pour avoir accès à une 
+liste de structure futex\_q, il faut noter qu'il y a une structure futex\_q pour 
+chaque tache bloquée en attente d'un futex.
 
-Le futex associée est identifié avec un futex\_key qui permet d'identifié un futex
-d'une maniere unique que ça soit dans un meme espace d'adressage ou bien d'un
-segement de mémoire partagé, elle est ensuite utilisée dans un bucket pour lister
-tous les processus en attente d'un futex donné.
-\\
+Dès que le thread qui détient le verrou voudra libérer le futex, il devra passer
+par un appel system pour le faire, une fois dans le kernel, une
+recherche est faite dans la table d'hash décrite plus haut pour trouver les 
+processus en attente du futex, il devra ensuite réveiller le thread bloqué.
 
-Expliquer le futex.c et son fonctionnement (du moins ce qui nous intéresse).
+
+
+*Illustation de la successions des appels de fonction user et kernel mode*
