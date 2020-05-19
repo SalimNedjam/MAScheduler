@@ -1,25 +1,44 @@
-\section*{Introduction}
-	L'une des tâches les plus importantes qu'un OS doit faire est de faciliter le
-	multi-tasking.
-	C'est l'ordonnanceur qui s'occupe de cette tâche critique.
-	
-	L'ordonnanceur a pour but premier de performer cette fonction le plus
-	efficacement possible en utilisant le moins de ressources, et en respectant les
-	trois principes qui sont Safety, Liveness et Fairness.
-	\\
-	
-	Les objectifs de notre projet ont donc été les suivants: optimiser les
-	décisions de l'ordonnanceur pour apporter une élection plus favorable aux
-	processus détenant un verrou.
-	\\
-	
-	Nous verrons tout d'abord dans ce rapport les différents aspects de la Glibc
-	qui permet de gérer la synchronisation. 
-	
-	Ensuite, nous aborderons les différents points qui font le lien entre la Glibc
-	et le kernel. 
-	
-	Nous introduirons le scheduler et son fonctionnement, ainsi que les différents
-	scénarios.
-	
-	Enfin, nous présenterons notre implémentation et les benchmarks.
+\section{Introduction}
+
+Un des rôles les plus importants pour un système d'exploitation est
+l'exé-cution de plusieurs tâches simultanément, c'est ce qu'on
+appelle le multitasking. Le processeur de la machine est une ressource
+partagée par l'ensemble des tâches qui s'y exécutent. L'objectif est donc
+que chaque tâche puisse y avoir accès pour de s'exécuter 
+convenablement. D'un point de vue utilisateur l'alternance de l'exécution
+des tâches doit être imperceptible.
+
+C'est l'ordonnanceur, scheduler en anglais, qui s'occupe de cette tâche
+critique. Il a pour but premier de rendre le multitasking le plus efficace
+possible en utilisant le moins de ressources et en respectant les trois principes
+clés qui sont: Safety, Liveness et Fairness.
+\\
+
+L'exécution parallèle des tâches sur le processeur implique parfois à celles-ci
+de se synchroniser, cela peut se faire grâce aux verrous. Un verrou est une
+ressource partagée où son détenteur bloque les autres tâches qui
+souhaiteraient le prendre. 
+
+Un problème se présente quand plusieurs processus souhaitent accéder à une même
+ressource critique protégée par un verrou. 
+En effet, si le processus, qui détient le verrou, empêche un ou plusieurs processus 
+d'avancer il est important de le faire passer en priorité dans les 
+élections. Ainsi, en favorisant le processus propriétaire du verrou, ce dernier 
+pourra arriver au point de libération de la ressource plus rapidement, et donc de 
+débloquer les autres processus tout en respectant la prévalence des autres processus 
+indépendants pour respecter la sémantique du CFS (Completly Fair scheduler).
+\\
+
+Les objectifs de notre projet ont donc été les suivants: optimiser les
+décisions de l'ordonnanceur pour apporter une élection plus favorable aux
+processus détenant un verrou.
+\\
+
+
+Nous verrons tout d'abord dans ce rapport les différents aspects de la glibc
+qui permettent de gérer la synchronisation des tâches. Ensuite, nous aborderons
+les différents points qui font le lien entre la glibc et le kernel, notamment
+pour transmettre l'identité du processus propriétaire du verrou. Nous introduirons
+le scheduler et son fonctionnement, ainsi que les différents scénarios qui permettent
+de résoudre le problème. Enfin, nous présenterons notre implémentation et les
+benchmarks.

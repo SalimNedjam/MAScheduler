@@ -1,7 +1,10 @@
-\section*{Implémentation}
+\section{Implémentation}
 
-Pour permettre au kernel de suivre l'évolution du possesseur du lock, Il a
-fallu créer une structure \verb|futex_state| pour gérer l'état d'un futex. 
+\subsection{État du futex}
+
+Le kernel ne propose pas de suivre l'évolution du propriétaire d'un futex.
+Cela nous empêche notamment de lui modifier sa priorité quand sa charge évoluera.
+Ainsi il a fallu créer une structure \verb|futex_state| pour gérer l'état d'un futex. 
 Voici la structure :
 \begin{lstlisting}
 struct futex_state {
@@ -32,6 +35,6 @@ la structure \verb|futex_state| du futex sur lequel il va s'endormir.
 
 Par conséquent, chaque processus après avoir manipulé le futex 
 devra chercher dans une liste chaînée la structure \verb|futex_state| associée au 
-futex et la mettre à jour avec la valeur courante du lock. Ainsi, à tout moment 
+futex et la mettre à jour avec la valeur courante du verrou. Ainsi, à tout moment 
 le kernel peut savoir sur quel futex un processus prioritaire est endormi et quel
 est le processus qui détient ce futex.

@@ -1,0 +1,53 @@
+\section{Background}
+
+\subsection{User: glibc et mutex}
+La glibc est une librairie qui offre un panel de fonctionnalités. 
+Celle des verrous (mutex) nous intéresse particulièrement: elle permet 
+d'abstraire aux programmeurs l'utilisation complexe des verrous côté kernel.
+\\
+
+Il existe plusieurs types de mutex proposés à l'utilisateur, voici une liste non exhaustive:
+\begin{enumerate}
+	\item TIMED: type par défaut, prend le verrou de manière bloquante.
+	\item RECURSIVE: ne tente pas de prendre le verrou si celui-ci est
+	déjà détenu par le processus courant.
+	\item ADAPTIVE: correspond à la méthode de prise de verrou 'trylock',
+	au bout d'un certain nombre d'échec la prise de verrou se fait
+	bloquante.
+\end{enumerate}
+Le choix du type de mutex se fait lors de l'initialisation du verrou.
+On peut combiner ces types externes avec des types internes qui permettent de
+modifier le comportement du verrou jusqu'au kernel, notamment les types:
+
+\begin{enumerate}
+	\item ROBUST: type par défaut, si le propriétaire du verrou meurt sans
+	le relâcher la prochaine demande à se verrou sera accepté sans appel
+	système.
+	\item PI (Priority Inheritance): la priorité du processus détenant le
+	verrou est augmenté à la plus grande priorité parmi les processus
+	bloqués sur le verrou.
+\end{enumerate}
+Ces deux types insèrent le \textit{pid} du propriétaire du verrou
+directement dans la valeur du verrou. Ainsi, lors des appels systèmes le kernel
+peut connaître le \textit{pid} du propriétaire du verrou avec une simple
+opération de flag sur la valeur passée.
+\\
+
+En tenant compte de ces éléments on peut donc en déduire que la modification 
+de la partie glibc n'est pas nécessaire. En effet, le \textit{pid} du 
+propriétaire du verrou étant déjà communiqué il nous suffit de le récupérer 
+côté kernel. Ainsi, cela permet à notre future solution de ne pas dépendre de 
+modification ou de décoration d'une fonctionnalité de la glibc, et d'éviter
+des dépendances dur à maintenir entre la glibc et le kernel
+
+\subsection{Kernel: futex}
+
+La glibc communique avec le kernel à travers des appels systèmes. Pour la prise de verrou (futex) elle fournit en paramètre de l'appel système l'adresse virtuelle de l'espace utilisateur qui contient la valeur du lock.
+
+Lorsqu'un processus veut prendre un mutex, ce dernier fait appel à une fonction 
+de la glibc qui essaye, dans un premier temps, de faire un test and set atomique pour essayer d'acquérir le verrou si ce dernier est libre, évitant ainsi de passer inutilement côté kernel. En effet, les appels systèmes sont coûteux en temps, l'objectif pour la glibc est donc d'en réduire leurs utilisations. Cependant, lorsqu'un thread ou processus souhaite par la suite prendre ce même mutex, préalablement détenu, un passage vers le kernel est nécessaire. L'appel système sera accompagné de l'adresse utilisateur \verb|uaddr| du futex. Le kernel utilise cette adresse pour générer et identifier le futex d'une manière unique grâce à une \verb|futex_key|. Segment de mémoire partagé ou même espace d'adressage, la clé est ensuite utilisée dans un bucket pour avoir accès à une liste de structure \verb|futex_q|. À noter que chaque tâche bloquée en attente d'un futex est représentée par un structure \verb|futex_q|.
+
+Dès lors que le thread détenant le verrou libéra le futex, un nouvel appel système sera nécessaire. Une fois côté kernel, une recherche est faite dans la table de hash, introduite précédemment, afin de trouver les autres tâches en attente du futex. Avant de sortir du kernel le thread réveillera les tâches bloquées.
+\\
+
+\textit{Nous illustrerons la successions des appels de fonction user et kernel mode ici.}

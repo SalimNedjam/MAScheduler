@@ -1,73 +1,110 @@
-\section*{Scénario}
+\section{Scénario}
 
-L'étude de scénario a été une étape importante dans notre réflexion d'optimisation de l'ordonnanceur. Cette démarche nous a permis de lever situations et cas particuliers pour la conception de notre solution.
+Pour simplifier, dans la suite du rapport nous considérons être sur un monoprocesseur
+avec trois tâches: A, B et C. L'objectif présenté par les scénarios est de favoriser
+la ou les tâches qui détiennent un verrou pour débloquer rapidement le fil d'exécution
+des autres tâches potentiellement en attente.
+
+
+\subsection{Charge}
+
+Une première solution est d'introduire un système de charge à chaque verrou, afin
+d'influencer sa priorité.
+
+\subsubsection{Augmentation de la priorité}
+
+Considérons que les tâches A et C ont une priorité de 120 et B une priorité de 100.
+La tâche A détient un verrou. Le scheduler doit favoriser A par rapport à C sans pour
+autant être un inconvénient pour B.
+Une augmentation de la priorité d'une valeur de 10 est un bon compromis. La tâche A
+devient alors plus prioritaire que C sans dépasser B.
 \\
 
-Pour simplifier, dans la suite du rapport nous considérons être sur un monoprocesseur et les tâches bloquées par le verrou sont des threads.
+Cependant, si C détient lui aussi un verrou, et que A et C bloquent respectivement 
+10 et 100 tâches, alors augmenter la priorité de 10 au deux tâches semble non équitable
+étant donné que C bloque plus de tâches que A. Ainsi, une augmentation dans un
+intervalle de 0 à 10 est plus cohérent. La tâche A aura une priorité augmentée
+de 2 contre 10 pour C. Cette augmentation de priorité sera déterminé
+avec un système de \textbf{charge}.
 \\
 
-Considérons deux tâches : un éditeur de texte (A) et un compilateur (B). La 
-tâche A détient un verrou et est moins prioritaire que B. La tâche A bloque 
-plusieurs autres tâches dans son exécution, elle est donc la cible de notre 
-optimisation : il faut trouver un moyen de favoriser A lors des élections pour 
-débloquer plus rapidement les autres tâches endormies.
+Une autre solution aurait pu être de modifier directement la valeur \verb|vruntime|
+pour forcer la tâche à être à gauche de l'arbre \verb|rbtree| et ainsi assurer sa
+réélection. Cependant, cela implique que la tâche passera devant tous les autres tâches,
+y compris celles plus prioritaires. Cette solution écrase toute la logique du système
+de priorité mis en place par le scheduler et donc n'a pas été retenue.
 
-Une première solution, trop naïve, était de modifier la priorité de A afin 
-d'assurer sa réélection. Dans les faits, cela aurait été de modifier le 
-\verb|vruntime| de l'entité correspondante afin de la placer à gauche du 
-\verb|rbtree|. Comme expliqué précédemment, cela pose plusieurs problèmes, 
-notamment une modification risquée du scheduler mais aussi, est-ce vraiment la 
-finalité attendue ?
 
-En forçant le placement de la tâche à gauche de l'arbre on s'assure sans 
-conteste une élection au prochain tour. Cependant cela implique que la tâche 
-A passe devant toutes les autres tâches, y compris la tâche B, qui est plus 
-prioritaire. Cette solution écrase donc toute la logique du système de priorité 
-mise en place dans le scheduler. Ce constat nous a permis d'y voir plus clair, 
-nous devons trouver une solution qui garde la hiérarchie des priorités : 
-favoriser A ne doit pas être un inconvénient pour B.
+\subsubsection{Calcul de charge}
 
-Une réponse à ce problème peut être d'influencer sur la priorité d'origine 
-attribuée à la tâche A. Par exemple, A s'exécute avec une priorité de 120 
-(valeur par défaut) et B avec une priorité de 100. On peut très bien envisager 
-d'augmenter la priorité de A pour la rendre plus prioritaire sans dépasser B. 
-Augmenter la priorité de 10 semble être un bon choix, A aura donc une priorité 
-de 110. Cependant, dans cet exemple l'intérêt est limité, cela devient plus 
-intéressant si l'on ajoute une nouvelle tâche C, de priorité 120. Les tâches A 
-et C commenceront donc avec la même priorité, mais A verra sa priorité augmenter
-rapidement lorsque des tâches se bloqueront sur le verrou qu'elle détient. 
-Ainsi, la tâche A sera favorisée face à des tâches de priorité équivalentes mais
-ne sera pas un inconvénient pour les autres tâches.
-
-Considérons maintenant que la tâche C est semblable à la tâche A, soit un autre éditeur de texte qui bloquera elle aussi des tâches par la prise d'un verrou. Les deux tâches se verront donc voir chacune augmenter leur priorité de 10. Cependant, par la prise de son verrou, A peut peut-être bloquer plus de tâche que C, mais du point de vue du scheduler A et C sont sur un pied d'égalité en matière de priorité. De ce constat est né l'idée d'influencer la priorité de la tâche en fonction du nombre de tâches bloquées par son verrou. 
+Chaque tâche propriétaire d'un verrou se verra attribuer une charge, celle-ci évoluera en fonction
+des tâches bloquées sur le verrou. Plus une tâche a une charge élevée, plus sa priorité augmente.
 \\
 
-On introduit donc un système de \textbf{charge}, plus une tâche a une charge élevée, plus sa priorité évolue. La priorité d'une tâche sera augmentée dans un intervalle de 0 à 10 en fonction de sa charge. Reste à établir comment calculer la charge d'une tâche. 
-
-Une première idée aurait été de calculer cette charge avec un système de pourcentage. Un compteur qui, au fur et à mesure de la vie d'exécution de la tâche A, compterait le nombre total de tâche qui peut potentiellement se bloquer sur le verrou. Un deuxième compteur, indiquant le nombre de tâches actuellement bloquées, permettrait de calculer un pourcentage de charge. Une simple division par 10 de la charge aurait permis de calculer l'augmentation de la priorité. Mais cette solution pose le problème de garder un compteur fiable sur le nombre de tâches pouvant potentiellement se bloquer sur le verrou. De plus le pourcentage de charge n'est pas très parlant. Imaginons que A et C ont toutes les deux une charge de 100\% mais A bloque 100 tâches contre 10 pour C. Bien que A devrait être plus favorisé il n'en reste que A et C auront toutes les deux une priorité augmentée de 10.
+L'implémentation du calcul de charge est assez simple. 
+La charge correspondra au nombre total de tâches couramment bloquée sur le verrou. 
+Ainsi, la priorité ajoutée sera dans l'intervalle de 0 à 10 mais fonctionnera par
+paliers en fonction de la charge: sur des échelons restant encore à définir, on peut
+envisager que toutes les 5 tâches bloquées la priorité se voit augmenter de 1,
+plafonnant ainsi l'augmentation à 50 tâches bloquées.
 \\
 
-Plutôt que de se perdre dans de lourds calculs de charge avec des pourcentages, nous avons décidé de s'orienter vers une implémentation plus simple. La charge correspondra au nombre total de tâches couramment bloquées sur le verrou. Ainsi, la priorité ajoutée à la tâche propriétaire du verrou restera toujours dans un intervalle de 0 à 10 mais fonctionnera par paliers : sur des échelons restant encore à définir, on peut envisager que toutes les 5 tâches bloquées la priorité se voit augmenter de 1, plafonnant ainsi l'augmentation à 50 tâches bloquées.
+Une autre implémentation aurait été de calculer cette charge avec un système 
+de pourcentage. Un compteur qui, au fur et à mesure de la vie d'exécution de la
+tâche A, compterait le nombre total de tâche qui peut potentiellement se bloquer
+sur son verrou. Un deuxième compteur, indiquant le nombre de tâches actuellement
+bloquées, permettrait de calculer un pourcentage de charge. Une simple division
+par 10 de la charge aurait permis de calculer l'augmentation de la priorité. Mais
+le pourcentage de charge n'est pas très parlant. Reprenons l'exemple précédent
+où A et C bloquent respectivement 10 et 100 tâches avec maintenant une charge 
+de 100\%.
+Bien que C devrait être plus favorisé, il n'en reste que A et C auront toutes 
+les deux une priorité augmentée de 10.
+
+
+\subsubsection{Héritage de charge}
+
+Pour rendre le système de charge plus efficace nous introduisons un héritage
+de charge entre les tâches. Considérons que A détient un verrou et se bloque
+en essayant de prendre un deuxième verrou détenu par B. Alors B verra sa
+charge augmenter par celle de A. Ainsi la tâche B sera plus favorisée même
+si A et B ont la même priorité et la même charge au départ.
 \\
 
-Pour rendre cette implémentation plus efficace nous ajoutons le
-mécanisme d'héritage de priorité. Considérons pour simplifier deux fils d'exécution
-(tâche 1 et 3) qui partagent le même espace d'adressage et qui veulent accéder à une même section critique, et un processus (tâche 2) qui contient un seul fil d'exécution indépendant des deux 
-premiers, dont les priorités sont définies comme ceci: Pri(3) $>$ Pri(2) $>$ 
-Pri(1), même en considérant l'augmentation de priorité définie précédemment.
+L'héritage de charge est très utile mais demande aussi d'être très précis.
+En effet, si la charge d'une tâche est incorrecte par rapport à la réalité
+(i.e. la valeur ne correspond pas au nombre de tâches bloquée)
+alors l'héritage ne peut qu'empirer l'erreur. Il sera très important
+de s'assurer que la charge est valide en la décrémentant lorsqu'une tâche 
+n'attend plus sur le verrou, notamment lorsque la tâche meurt avant de l'avoir pris.
+
+
+\subsection{Héritage de priorité}
+
+Un deuxième mécanisme est l'héritage de priorité. 
+Considérons pour simplifier deux fils d'exécution
+(tâche A et C) qui partagent le même espace d'adressage et qui veulent accéder 
+à une même section critique, et un processus (tâche B) qui contient 
+un seul fil d'exécution indépendant des deux 
+premiers, dont les priorités sont définies comme ceci: Pri(C) $>$ Pri(B) $>$ 
+Pri(A), même en considérant l'augmentation de priorité définie précédemment.
 \\
 
 NB: cette configuration peut être aussi atteignable avec 3 processus dont deux 
 utilisent un segment de mémoire partagé ou bien 3 threads d'un même processus.
 \\
 
-Si la tâche 1, qui se trouve être la moins prioritaire, prend un futex et que 
-la tâche 3, qui est la plus prioritaire, veut aussi l'acquérir, elle
-devra se bloquer en attendant que la tache 1 libère le verrou. Étant donné que la tâche 2 possède une priorité plus élevée que le propriétaire du futex, elle sera choisie plus fréquemment par le scheduler. Ce comportement va ralentir l'exécution de la tâche 3, la plus prioritaire, qui est bloquée en attente de la libération du futex par la tâche 1.
+Si la tâche A, qui se trouve être la moins prioritaire, prend un futex et que 
+la tâche C, qui est la plus prioritaire, veut aussi l'acquérir, elle
+devra se bloquer en attendant que la tache A libère le verrou. Étant donné que 
+la tâche B possède une priorité plus élevée que le propriétaire du futex, elle 
+sera choisie plus fréquemment par le scheduler. Ce comportement va ralentir 
+l'exécution de la tâche C, la plus prioritaire, qui est bloquée en attente de la 
+libération du futex par la tâche A.
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=0.21]{include/without_inherit.jpg}
+	\includegraphics[scale=0.15]{include/without_inherit.jpg}
 	\caption{Avancement des processus sans l'heritage de priorité}
 	\label{fig:without_inherit}
 \end{figure}
@@ -75,17 +112,23 @@ devra se bloquer en attendant que la tache 1 libère le verrou. Étant donné qu
 \newpage
 
 
-L'idée ici est de modifier la priorité de la tâche 1 pour qu'elle soit plus 
-prioritaire que la tâche 2. On peut atteindre cela en héritant de la 
-priorité de la tâche 3, qui est plus prioritaire que la tâche 2. 
+L'idée ici est de modifier la priorité de la tâche A pour qu'elle soit plus 
+prioritaire que la tâche B. On peut atteindre cela en héritant de la 
+priorité de la tâche C, qui est plus prioritaire que la tâche B. 
+\\
 
-Ainsi, le propriétaire du verrou se verra attribuer, au cours de son exécution, la priorité de la tâche la plus prioritaire parmi toutes les tâches bloquées sur le verrou. De plus, l'augmentation de la priorité par rapport à la charge introduite précédemment sera appliquée à cette nouvelle priorité.
+Ainsi, le propriétaire du verrou se verra attribuer, au cours de son exécution, 
+la priorité de la tâche la plus prioritaire parmi toutes les tâches bloquées 
+sur le verrou. De plus, l'augmentation de la priorité par rapport à la charge 
+introduite précédemment sera appliquée à cette nouvelle priorité.
+\\
 
 \begin{figure}[h!]
 	\centering
-	\includegraphics[scale=0.21]{include/with_inherit.jpg}
+	\includegraphics[scale=0.15]{include/with_inherit.jpg}
 	\caption{Avancement des processus avec l'heritage de priorité}
 	\label{fig:with_inherit}
 \end{figure}
+
 
 Le CFS est connu pour être un scheduler très équitable, en combinant ces deux techniques cela permet d'assurer une implémentation qui reste juste pour chaque tâche.
