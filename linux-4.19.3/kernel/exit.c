@@ -767,6 +767,19 @@ void __noreturn do_exit(long code)
 	struct task_struct *tsk = current;
 	int group_dead;
 
+	/*
+	* MAS code:
+	* if the current exiting task was waiting on a futex
+	* we have to decrement the load of the futex state
+	* and change the priority of the futex owner
+	* it's useless to delete all the futex state of the futext_state_list
+	* because memory will be released and futex state added to the new
+	* futex_state_list futex owner
+	*/
+	/* If the current exiting task was waiting on a futex */
+	if (tsk->waiting_futex_state != NULL) 
+		futex_state_inherit(tsk, tsk->waiting_futex_state, FUTEX_STATE_UNLOAD);
+
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
 

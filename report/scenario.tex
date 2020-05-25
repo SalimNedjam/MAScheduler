@@ -3,7 +3,8 @@
 Pour simplifier, dans la suite du rapport nous considérons être sur un monoprocesseur
 avec trois tâches: A, B et C. L'objectif présenté par les scénarios est de favoriser
 la ou les tâches qui détiennent un verrou pour débloquer rapidement le fil d'exécution
-des autres tâches potentiellement en attente.
+des autres tâches potentiellement en attente, tout en ne dénaturant pas les principes
+clés du CFS.
 
 
 \subsection{Charge}
@@ -42,7 +43,7 @@ des tâches bloquées sur le verrou. Plus une tâche a une charge élevée, plus
 \\
 
 L'implémentation du calcul de charge est assez simple. 
-La charge correspondra au nombre total de tâches couramment bloquée sur le verrou. 
+La charge correspondra au nombre total de tâches couramment bloquées sur le verrou. 
 Ainsi, la priorité ajoutée sera dans l'intervalle de 0 à 10 mais fonctionnera par
 paliers en fonction de la charge: sur des échelons restant encore à définir, on peut
 envisager que toutes les 5 tâches bloquées la priorité se voit augmenter de 1,
@@ -67,14 +68,14 @@ les deux une priorité augmentée de 10.
 Pour rendre le système de charge plus efficace nous introduisons un héritage
 de charge entre les tâches. Considérons que A détient un verrou et se bloque
 en essayant de prendre un deuxième verrou détenu par B. Alors B verra sa
-charge augmenter par celle de A. Ainsi la tâche B sera plus favorisée même
+charge augmenter par la valeur celle de A. Ainsi, la tâche B sera plus favorisée même
 si A et B ont la même priorité et la même charge au départ.
 \\
 
 L'héritage de charge est très utile mais demande aussi d'être très précis.
 En effet, si la charge d'une tâche est incorrecte par rapport à la réalité
-(i.e. la valeur ne correspond pas au nombre de tâches bloquée)
-alors l'héritage ne peut qu'empirer l'erreur. Il sera très important
+(i.e. la valeur ne correspond pas au nombre de tâches bloquées)
+alors l'héritage ne peut qu'aggraver l'erreur. Il est très important
 de s'assurer que la charge est valide en la décrémentant lorsqu'une tâche 
 n'attend plus sur le verrou, notamment lorsque la tâche meurt avant de l'avoir pris.
 

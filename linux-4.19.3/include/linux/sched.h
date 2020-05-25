@@ -641,6 +641,13 @@ struct task_struct {
 	int				normal_prio;
 	unsigned int			rt_priority;
 
+	/*
+	 * MAS code:
+	 */
+	struct mutex futex_state_lock;
+	struct list_head futex_state_list;
+	struct futex_state *waiting_futex_state;
+
 	const struct sched_class	*sched_class;
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;

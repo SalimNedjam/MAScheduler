@@ -3,7 +3,7 @@
 EXEC=force_inherit
 BENCH=force_inherit_bench
 
-all :  share force_inherit_bench
+all : share force_inherit_bench
 
 
 

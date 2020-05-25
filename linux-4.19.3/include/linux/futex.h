@@ -13,6 +13,18 @@ extern int
 handle_futex_death(u32 __user *uaddr, struct task_struct *curr, int pi);
 
 /*
+ * MAS code:
+ */
+extern int get_futex_state_sumload(struct task_struct *task);
+extern void futex_state_prio(struct task_struct *task);
+extern int futex_state_inherit(struct task_struct *task, 
+																struct futex_state *state,
+																int op);
+
+#define FUTEX_STATE_LOAD 		1
+#define FUTEX_STATE_UNLOAD	-1
+
+/*
  * Futexes are matched on equal values of this key.
  * The key type depends on whether it's a shared or private mapping.
  * Don't rearrange members without looking at hash_futex().

@@ -51,15 +51,12 @@ la droite de l'arbre (Figure \ref{fig:sched}).
 	\caption{Relation entre le vruntime et le temps réel en fonction de la priorité}
 	\label{fig:sched}
 \end{figure}
-\\
 
-De par ces faits nous pouvons en déduire que pour prioriser une entité, 
-représentant une tâche détenant un verrou, nous pouvons influencer son 
+Pour prioriser une entité nous pouvons influencer son 
 \verb|vruntime| pour la garder à gauche de l'arbre et assurer une réélection 
 rapide. Étant donné que la valeur \verb|vruntime| se base sur la priorité de 
 l'entité nous avons décidé d'influencer la priorité des processus, et 
 les utiliser comme un levier pour dire au scheduler de favoriser l'élection 
 du processus qui détient le verrou. Pour cause, la modification du scheduler aurait
 demandé d'étudier et de maîtriser tout le code et les détails du scheduler, afin
-d'être sûr que nos modifications ne compromettent pas le fonctionnement de
-l'ordonnanceur.
+d'être sûr que nos modifications ne compromettent pas son fonctionnement.

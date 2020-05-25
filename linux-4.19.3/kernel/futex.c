@@ -219,17 +219,20 @@ struct futex_pi_state {
 
 /**
  * struct futex_state - The state struct to monitor futex owner
- * @list:               the list of the states                                                                                               :		priority-sorted list of tasks waiting on this futex
- * @mutex:		the lock of the state
- * @owner:		the the task_struct if the owner of the futex
- * @refcount:		the kref counter
- * @key:		the key the futex is hashed on
+ * @list: 	the list of the states                                                                                               :		priority-sorted list of tasks waiting on this futex
+ * @mutex: 	the lock of the state
+ * @owner: 	the the task_struct if the owner of the futex
+ * @refcount:	the kref counter
+ * @load: 	the futex load, represent the number of waiters on the futex		
+ * @key: 	the key the futex is hashed on
  */
 struct futex_state {
-	struct list_head list;
+	struct list_head list_global;
+	struct list_head list_local;
 	struct rt_mutex mutex;
 	struct task_struct *owner;
 	struct kref refcount;
+	int load;
 	union futex_key *key;
 } __randomize_layout;
 
@@ -805,22 +808,25 @@ static int get_futex_value_locked(u32 *dest, u32 __user *from)
 
 
 /*
- * Owner Tracker code:
+ * MAS code:
+ * functions to manage futex state
  */
 
+
 /**
- * fetch_state - Search in a state associated with the key is in the list
+ * fetch_futex_state_global - Search in a state associated with the key 
+ * 														is in the list
  * @key:	Pointer to key
  * @state_ret:	Pointer to return the stated found
  *
  * Put the adresse of the state if found, or NULL if not
  */
-int fetch_state(union futex_key *key, struct futex_state **state_ret)
+int fetch_futex_state_global(union futex_key *key, struct futex_state **state_ret)
 {
 	struct futex_state *state, *ret = NULL;
 
 	mutex_lock(&state_lock);
-	list_for_each_entry(state, &state_list, list) {
+	list_for_each_entry(state, &state_list, list_global) {
 		if (match_futex(key, state->key)) {
 			ret = state;
 			kref_get(&state->refcount);
@@ -833,66 +839,177 @@ int fetch_state(union futex_key *key, struct futex_state **state_ret)
 	return 1;
 }
 
+int fetch_futex_state_local(struct task_struct *task,
+											union futex_key *key, 
+											struct futex_state **state_ret)
+{
+	struct futex_state *state, *ret = NULL;
+
+	mutex_lock(&task->futex_state_lock);
+	list_for_each_entry(state, &task->futex_state_list, list_local) {
+		if (match_futex(key, state->key)) {
+			ret = state;
+			kref_get(&state->refcount);
+			break;
+		}
+	}
+	mutex_unlock(&task->futex_state_lock);
+
+	*state_ret = ret;
+	return 1;
+}
+
+int get_futex_state_sumload(struct task_struct *task)
+{
+	struct futex_state *state;
+	int sum = 0;
+
+	mutex_lock(&task->futex_state_lock);
+	list_for_each_entry(state, &task->futex_state_list, list_local) {
+		sum += state->load;
+	}
+	mutex_unlock(&task->futex_state_lock);
+
+	return sum;
+}
+
+int add_futex_state_local(struct futex_state *state)
+{
+	mutex_lock(&state->owner->futex_state_lock);
+	list_add(&state->list_local, &state->owner->futex_state_list);
+	mutex_unlock(&state->owner->futex_state_lock);
+
+	return 0;
+}
+
+int del_futex_state_local(struct futex_state *state)
+{
+	mutex_lock(&state->owner->futex_state_lock);
+	list_del(&state->list_local);
+	mutex_unlock(&state->owner->futex_state_lock);
+
+	return 0;
+}
+
 /**
  * add_state - Add the stated passed to the list
  * @state:	Pointer to the state
  * 
  */
-int add_state(struct futex_state *state)
+int add_futex_state_global(struct futex_state *state)
 {
-	kref_init(&state->refcount);
 	mutex_lock(&state_lock);
-	list_add(&state->list, &state_list);
+	list_add(&state->list_global, &state_list);
 	mutex_unlock(&state_lock);
 
 	return 0;
 }
 
-
-
-/**
- * fixup_state_owner - Put the right owner in the state passed
- * @uval:	Pid of the owner
- * @state:	Pointer to the state
-
- * Seach the task_struct associated to the pid passed and assign to the state
- */
-int fixup_state_owner(u32 uval, struct futex_state *state)
+int del_futex_state_global(struct futex_state *state)
 {
-	struct task_struct *new_owner = find_get_task_by_vpid(uval);
-	u32 last_tid = -1;
-
-	if(state->owner)
-		last_tid = task_pid_vnr(state->owner);
-
-	pr_info(" NewOwner=%d LastOwner=%d futex_state=%p\n"
-			,uval, last_tid, state);
-
-	state->owner = new_owner;
+	mutex_lock(&state_lock);
+	list_del(&state->list_global);
+	mutex_unlock(&state_lock);
 
 	return 0;
-
 }
 
 /**
- * free_state - Free the space, passed as callback of kref_put
+ * free_futex_state - Free the space, passed as callback of kref_put
  * @kref:	Pointer to the kref of the state
 
  * Free the state allocated in the slab, this methode is called by kref_put
  * when the number of references drops to zero
  */
-static void free_state(struct kref *kref)
+static void free_futex_state(struct kref *kref)
 {
 	struct futex_state *state =
 		container_of(kref, struct futex_state, refcount);
-	mutex_lock(&state_lock);
-	list_del(&state->list);
-	mutex_unlock(&state_lock);
+
+	del_futex_state_global(state);
+	del_futex_state_local(state);
+
+	put_futex_key(state->key);
 	kmem_cache_free(kmem_state_key_cache, state->key);
 	kmem_cache_free(kmem_state_cache, state);
+}
 
+/**
+ * futex_state_prio - Set the priority of the futex owner based on its load
+ * @task:	Pointer to the task
+ */
+void futex_state_prio(struct task_struct *task)
+{
+	int load = get_futex_state_sumload(task);
+	if (load < 0)
+		load = 0;
+
+	if (load > 10)
+		load = 10;
+
+	task->prio = task->static_prio - load;
+
+	pr_info("MAS set prio, task=%d static_prio=%d prio=%d load=%d\n", 
+		task_pid_vnr(task), task->static_prio, task->prio, load);
 
 }
+
+/**
+ * fixup_state_owner_current - Set the current task as owner of the state
+ * @state:	Pointer to the state
+ * 
+ * After set the current task as owner, put the ref
+ * In fact, the owner does not wait anymore on the futex
+ * Decrement the futex load and update the current task priority base on the 
+ * new load
+ */
+int fixup_state_owner_current(struct futex_state *state)
+{
+	int last_owner = task_pid_vnr(state->owner);
+	/* Current task became the owner, load decrement */
+	state->owner = current;
+	state->load--;
+	add_futex_state_local(state);
+	/* Set the priority */
+	futex_state_prio(state->owner);
+	/* Current task no longer wait on the futex */
+	kref_put(&state->refcount, free_futex_state);
+	current->waiting_futex_state = NULL;
+
+	pr_info("MAS fixup owner, futex_state=%p last_owner=%d new_owner=%d\n",
+		state, last_owner, task_pid_vnr(state->owner));
+
+	return 0;
+}
+
+int futex_state_inherit(struct task_struct *task, 
+												struct futex_state *state,
+												int op)
+{
+	int sumload = 0;
+
+	if (op != FUTEX_STATE_LOAD || op != FUTEX_STATE_UNLOAD)
+		return -1;
+
+	/* Get the sum of all the futex state load on the task */
+	sumload = get_futex_state_sumload(task);
+	/*
+	 * Apply the load inheritance 
+	 * increment the load of the task futex state
+	 * if the futex owner is waiting on a futex, then increment
+	 * his load too, and repeat until the futex owner does not
+	 * wait on a futex, wich will be considered as the master futex owner
+	 */
+	do {
+		state->load += (sumload + 1) * op;
+	}	while ((state = state->owner->waiting_futex_state) != NULL);
+	/* Set the priority based on the state load to the master futex owner */
+	futex_state_prio(state->owner);
+
+	return 0;
+}
+
+
 /*
  * PI code:
  */
@@ -2732,11 +2849,9 @@ static int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val,
 	struct futex_hash_bucket *hb;
 	struct futex_q q = futex_q_init;
 	int ret;
-	struct futex_state *state = NULL;
-	union futex_key *key;
-	u32 valeur;
+	//struct futex_state *state = NULL;
+	//union futex_key *key;
 
-	get_user(valeur, uaddr);
 	if (!bitset)
 		return -EINVAL;
 	q.bitset = bitset;
@@ -2752,25 +2867,23 @@ static int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val,
 					     current->timer_slack_ns);
 	}
 
-
 	/* Allocate for a key and get the key */
-	key =  kmem_cache_zalloc(kmem_state_key_cache, GFP_KERNEL);
-	ret = get_futex_key(uaddr, 0, key, VERIFY_READ);
+	//key =  kmem_cache_zalloc(kmem_state_key_cache, GFP_KERNEL);
+	//ret = get_futex_key(uaddr, 0, key, VERIFY_READ);
 
 
 	/* Check if the key match a state or it's the first task to wait for this futex*/
-	fetch_state(key, &state);
-	if (!state) {
+	//fetch_state(key, &state);
+	//if (!state) {
 		/* It's the first task to wait so we create the state */
-		state =  kmem_cache_zalloc(kmem_state_cache, GFP_KERNEL);
-		state->key = key;
-		add_state(state);
-	} else {
+		//state =  kmem_cache_zalloc(kmem_state_cache, GFP_KERNEL);
+		//state->key = key;
+		//add_state(state);
+	//} else {
 		/* Delete the key because the state already exist */
-		kmem_cache_free(kmem_state_key_cache, key);
-		kref_get(&state->refcount);
-	}
-
+		//kmem_cache_free(kmem_state_key_cache, key);
+		//kref_get(&state->refcount);
+	//}
 
 retry:
 	/*
@@ -2785,8 +2898,9 @@ retry:
 	futex_wait_queue_me(hb, &q, to);
 
 	/* Put this task as owner of futex after wakeup*/
-	fixup_state_owner(task_pid_vnr(current), state);
-	kref_put(&state->refcount, free_state);
+	//fixup_state_owner(task_pid_vnr(current), state);
+	//kref_put(&state->refcount, free_state);
+
 	/* If we were woken (and unqueued), we succeeded, whatever. */
 	ret = 0;
 	/* unqueue_me() drops q.key ref */
@@ -2859,13 +2973,29 @@ static int futex_lock_pi(u32 __user *uaddr, unsigned int flags,
 	struct rt_mutex_waiter rt_waiter;
 	struct futex_hash_bucket *hb;
 	struct futex_q q = futex_q_init;
+	struct task_struct *owner;
+	struct futex_state *state = NULL;
+	union futex_key *key;
 	int res, ret;
+	u32 uval, vpid;
+
+	/* Alloc memory for the state key */
+	key = kmem_cache_zalloc(kmem_state_key_cache, GFP_KERNEL);
+	/* Get the user value of the lock */
+	if (get_user(uval, uaddr))
+		return -EFAULT;
+	/* Get the owner pid of the lock  */
+	vpid = uval & FUTEX_TID_MASK;
+	/* Get the owner task_struct */
+	owner = find_task_by_vpid(vpid);
 
 	if (!IS_ENABLED(CONFIG_FUTEX_PI))
 		return -ENOSYS;
 
 	if (refill_pi_state_cache())
 		return -ENOMEM;
+
+
 
 	if (time) {
 		to = &timeout;
@@ -2878,7 +3008,44 @@ static int futex_lock_pi(u32 __user *uaddr, unsigned int flags,
 retry:
 	ret = get_futex_key(uaddr, flags & FLAGS_SHARED, &q.key, VERIFY_WRITE);
 	if (unlikely(ret != 0))
-		goto out;
+		goto out_dealloc_key;
+
+	/*
+	 * MAS code:
+	 * get or create the futex state for the futex owner
+	 * calcul his load and set the priority based on
+	 */ 
+
+	/* 
+	 * For security we do not use the futex_q.key 'q.key'
+	 * by using our own key we can manage his deallocation
+	 */
+	ret = get_futex_key(uaddr, 0, key, VERIFY_READ);
+	if (unlikely(ret != 0))
+		goto out_dealloc_put_key;
+
+	/* Check if the key match a state or it's the first task to wait */
+	fetch_futex_state_local(owner, key, &state);
+	if (!state) {
+		/* It's the first task to wait so we create the state */
+		state = kmem_cache_zalloc(kmem_state_cache, GFP_KERNEL);
+		state->key = key;
+		state->owner = owner;
+		state->load = 0;
+		kref_init(&state->refcount);
+		add_futex_state_global(state);
+		add_futex_state_local(state);
+	} else {
+		/* Dealloc the state key */
+		put_futex_key(key);
+		kmem_cache_free(kmem_state_key_cache, key);
+		kref_get(&state->refcount);
+	}
+	/* Current task will be waiting on the futex state */
+	current->waiting_futex_state = state;
+	futex_state_inherit(current, state, FUTEX_STATE_LOAD);
+	pr_info("MAS waiting, task=%d futex_state=%p load=%d\n",
+		task_pid_vnr(current), state, state->load);
 
 retry_private:
 	hb = queue_lock(&q);
@@ -2893,6 +3060,8 @@ retry_private:
 		case 1:
 			/* We got the lock. */
 			ret = 0;
+			/* Put this task as owner of futex state */
+			fixup_state_owner_current(state);
 			goto out_unlock_put_key;
 		case -EFAULT:
 			goto uaddr_faulted;
@@ -2978,6 +3147,10 @@ no_block:
 	 * haven't already.
 	 */
 	res = fixup_owner(uaddr, &q, !ret);
+
+	/* Put this task as owner of futex state */
+	fixup_state_owner_current(state);
+
 	/*
 	 * If fixup_owner() returned an error, proprogate that.  If it acquired
 	 * the lock, clear our -ETIMEDOUT or -EINTR.
@@ -3016,6 +3189,16 @@ out:
 	}
 	return ret != -EINTR ? ret : -ERESTARTNOINTR;
 
+out_dealloc_key:
+	/* Dealloc the state key */
+	kmem_cache_free(kmem_state_key_cache, key);
+	goto out;
+
+out_dealloc_put_key:
+	/* Dealloc the state key */
+	kmem_cache_free(kmem_state_key_cache, key);
+	goto out_put_key;
+
 uaddr_faulted:
 	queue_unlock(hb);
 
@@ -3027,6 +3210,7 @@ uaddr_faulted:
 		goto retry_private;
 
 	put_futex_key(&q.key);
+	put_futex_key(key);
 	goto retry;
 }
 
@@ -3041,6 +3225,7 @@ static int futex_unlock_pi(u32 __user *uaddr, unsigned int flags)
 	union futex_key key = FUTEX_KEY_INIT;
 	struct futex_hash_bucket *hb;
 	struct futex_q *top_waiter;
+	struct futex_state *state;
 	int ret;
 
 	if (!IS_ENABLED(CONFIG_FUTEX_PI))
@@ -3052,6 +3237,7 @@ retry:
 	/*
 	 * We release only a lock we actually own:
 	 */
+	
 	if ((uval & FUTEX_TID_MASK) != vpid)
 		return -EPERM;
 
@@ -3061,6 +3247,14 @@ retry:
 
 	hb = hash_futex(&key);
 	spin_lock(&hb->lock);
+
+	/*
+	 * MAS code:
+	 * release the futex state if exists
+	 */ 
+	fetch_futex_state_local(current, &key, &state);
+	if (state)
+		del_futex_state_local(state);
 
 	/*
 	 * Check waiters first. We do not trust user space values at
