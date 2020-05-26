@@ -947,10 +947,10 @@ void futex_state_prio(struct task_struct *task)
 	if (load > 10)
 		load = 10;
 
-	task->prio = task->static_prio - load;
+	task->normal_prio = task->static_prio - load;
 
-	pr_info("MAS set prio, task=%d static_prio=%d prio=%d load=%d\n", 
-		task_pid_vnr(task), task->static_prio, task->prio, load);
+	pr_info("MAS set prio, task=%d static_prio=%d normal_prio=%d load=%d\n", 
+		task_pid_vnr(task), task->static_prio, task->normal_prio, load);
 
 }
 
@@ -987,12 +987,18 @@ int futex_state_inherit(struct task_struct *task,
 												int op)
 {
 	int sumload = 0;
+	struct futex_state *m_state;
 
-	if (op != FUTEX_STATE_LOAD || op != FUTEX_STATE_UNLOAD)
+	if (op != FUTEX_STATE_LOAD && op != FUTEX_STATE_UNLOAD)
 		return -1;
+
+	pr_info("MAS inherit, enter\n");
 
 	/* Get the sum of all the futex state load on the task */
 	sumload = get_futex_state_sumload(task);
+
+	pr_info("MAS inherit, sumload=%d\n", sumload);
+
 	/*
 	 * Apply the load inheritance 
 	 * increment the load of the task futex state
@@ -1001,11 +1007,15 @@ int futex_state_inherit(struct task_struct *task,
 	 * wait on a futex, wich will be considered as the master futex owner
 	 */
 	do {
+		m_state = state;
 		state->load += (sumload + 1) * op;
+		pr_info("MAS inherit, owner=%d futex_state=%p futex_state->load=%d\n",
+			task_pid_vnr(state->owner), state, state->load);
 	}	while ((state = state->owner->waiting_futex_state) != NULL);
+	pr_info("MAS inherit, set prio\n");
 	/* Set the priority based on the state load to the master futex owner */
-	futex_state_prio(state->owner);
-
+	futex_state_prio(m_state->owner);
+	pr_info("MAS inherit, leave\n");
 	return 0;
 }
 
@@ -3044,8 +3054,8 @@ retry:
 	/* Current task will be waiting on the futex state */
 	current->waiting_futex_state = state;
 	futex_state_inherit(current, state, FUTEX_STATE_LOAD);
-	pr_info("MAS waiting, task=%d futex_state=%p load=%d\n",
-		task_pid_vnr(current), state, state->load);
+	pr_info("MAS waiting, task=%d futex_state=%p load=%d owner->normal_prio=%d\n",
+		task_pid_vnr(current), state, state->load, state->owner->normal_prio);
 
 retry_private:
 	hb = queue_lock(&q);
@@ -3253,8 +3263,14 @@ retry:
 	 * release the futex state if exists
 	 */ 
 	fetch_futex_state_local(current, &key, &state);
-	if (state)
+	if (state) {
 		del_futex_state_local(state);
+		pr_info("MAS unlock, futex_state=%p\n", state);
+	} else {
+		pr_info("MAS unlock, no futex_state");
+	}
+	/* When release a futex the load change, set the new priority */
+	futex_state_prio(current);
 
 	/*
 	 * Check waiters first. We do not trust user space values at

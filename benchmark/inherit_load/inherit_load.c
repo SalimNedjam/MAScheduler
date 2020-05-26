@@ -6,65 +6,86 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 
-#define NB_THREAD 100
-
-pthread_t tid[NB_THREAD];
-int counter;
 pthread_mutex_t lock;
+pthread_mutex_t lockA;
+pthread_mutex_t lockB;
 
-void *doSomeThing(void *arg)
+void job()
 {
-	pthread_mutex_lock(&lock);
-	counter += 1;
-	pid_t tid;
-
+	pid_t tid = syscall(SYS_gettid);
+	
+	printf("pid %d\n", tid);
+	
 	for (size_t i = 0; i < 10000; i++)
-		tid = syscall(SYS_gettid);
+		syscall(SYS_gettid);
+}
 
-	pthread_mutex_unlock(&lock);
+void *jobA(void *arg)
+{
+	printf("jobA...\n");
+	pthread_mutex_lock(&lockA);
+	
+	printf("jobA start\n");
+	job();
+	printf("jobA finish\n");
+	
+	pthread_mutex_unlock(&lockA);
 
 	return NULL;
 }
 
+void *jobB(void *arg)
+{
+	printf("jobB...\n");
+	pthread_mutex_lock(&lockA);
+	pthread_mutex_lock(&lockB);
+	
+	printf("jobB start\n");
+	job();
+	printf("jobB finish\n");
+	
+	pthread_mutex_unlock(&lockB);
+	pthread_mutex_unlock(&lockA);
+
+	return NULL;
+}
+
+int create(pthread_t *thread, void *(*start_routine) (void *))
+{
+	pthread_attr_t attr_thread;
+	struct sched_param param;
+  int ret;
+  
+	ret = pthread_attr_init(&attr_thread);
+	ret = pthread_attr_getschedparam(&attr_thread, &param);
+  
+  ret = pthread_create(thread, &attr_thread, start_routine, NULL);
+  if (ret != 0)
+		printf("cannot create thread %s\n", strerror(ret));
+		
+  return ret;
+}
 
 void bench(const pthread_mutexattr_t *attr)
 {
-	int i = 0;
-	int err;
-	pthread_attr_t attr_thread;
-	struct sched_param param;
+	printf("start bench...\n");
 
-	counter = 0;
-	err = pthread_attr_init(&attr_thread);
-	err = pthread_attr_getschedparam(&attr_thread, &param);
+	pthread_t A, B;
 
-
-	if (pthread_mutex_init(&lock, attr) != 0) {
-		printf("\n mutex init failed\n");
-		return;
-	}
 	pthread_mutex_lock(&lock);
 
-	while (i < NB_THREAD) {
+	create(&A, &jobA);
+	create(&B, &jobB);
 
-		param.sched_priority =(NB_THREAD-1)/10 - i/10;
-		err = pthread_attr_setschedparam(&attr_thread, &param);
-
-		err = pthread_create(&(tid[i]), &attr_thread,
-					&doSomeThing, NULL);
-		if (err != 0)
-			printf("\ncan't create thread :[%s]", strerror(err));
-		i++;
-	}
-	pthread_mutex_unlock(&lock);
-
-	for (i = 0; i < NB_THREAD; i++)
-		pthread_join(tid[i], NULL);
-
-	pthread_mutex_destroy(&lock);
+  pthread_join(A, NULL);
+  pthread_join(B, NULL);
+  
+  pthread_mutex_destroy(&lock);
+  
+  printf("finish bench...\n");
 }
 
-int main(int argc, char const *argv[])
+int main(int argc, const char **argv)
 {
   pthread_mutexattr_t attr;
 
@@ -72,9 +93,26 @@ int main(int argc, char const *argv[])
 		perror("mutexattr_init error");
 		return -1;
 	}
+	
 	pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+	
+	if (pthread_mutex_init(&lock, &attr) != 0) {
+		printf("mutex init failed\n");
+		return -1;
+	}
+	
+	if (pthread_mutex_init(&lockA, &attr) != 0) {
+		printf("mutex init failed\n");
+		return -1;
+	}
+	
+	if (pthread_mutex_init(&lockB, &attr) != 0) {
+		printf("mutex init failed\n");
+		return -1;
+	}
+	
+	
   bench(&attr);
+  
   return 0;
 }
-
-

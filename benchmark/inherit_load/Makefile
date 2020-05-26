@@ -2,7 +2,7 @@
 
 all : inherit_load
 
-test :  test.c
+% :  %.c
 	g++ -Wall $^ -std=c++11 -lpthread -o $@
 	
 
