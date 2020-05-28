@@ -821,7 +821,8 @@ static int get_futex_value_locked(u32 *dest, u32 __user *from)
  *
  * Put the adresse of the state if found, or NULL if not
  */
-int fetch_futex_state_global(union futex_key *key, struct futex_state **state_ret)
+int fetch_futex_state_global(union futex_key *key, 
+														struct futex_state **state_ret)
 {
 	struct futex_state *state, *ret = NULL;
 
@@ -829,7 +830,6 @@ int fetch_futex_state_global(union futex_key *key, struct futex_state **state_re
 	list_for_each_entry(state, &state_list, list_global) {
 		if (match_futex(key, state->key)) {
 			ret = state;
-			kref_get(&state->refcount);
 			break;
 		}
 	}
@@ -849,7 +849,6 @@ int fetch_futex_state_local(struct task_struct *task,
 	list_for_each_entry(state, &task->futex_state_list, list_local) {
 		if (match_futex(key, state->key)) {
 			ret = state;
-			kref_get(&state->refcount);
 			break;
 		}
 	}
@@ -3049,8 +3048,8 @@ retry:
 		/* Dealloc the state key */
 		put_futex_key(key);
 		kmem_cache_free(kmem_state_key_cache, key);
-		kref_get(&state->refcount);
 	}
+	kref_get(&state->refcount);
 	/* Current task will be waiting on the futex state */
 	current->waiting_futex_state = state;
 	futex_state_inherit(current, state, FUTEX_STATE_LOAD);
