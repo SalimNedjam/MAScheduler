@@ -920,7 +920,7 @@ int del_futex_state_global(struct futex_state *state)
  * Free the state allocated in the slab, this methode is called by kref_put
  * when the number of references drops to zero
  */
-static void free_futex_state(struct kref *kref)
+void free_futex_state(struct kref *kref)
 {
 	struct futex_state *state =
 		container_of(kref, struct futex_state, refcount);

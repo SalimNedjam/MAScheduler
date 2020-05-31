@@ -15,6 +15,7 @@ handle_futex_death(u32 __user *uaddr, struct task_struct *curr, int pi);
 /*
  * MAS code:
  */
+extern void free_futex_state(struct kref *kref);
 extern int get_futex_state_sumload(struct task_struct *task);
 extern void futex_state_prio(struct task_struct *task);
 extern int futex_state_inherit(struct task_struct *task, 
