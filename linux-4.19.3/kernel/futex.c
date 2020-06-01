@@ -973,7 +973,7 @@ int futex_state_inherit(struct task_struct *task,
 	if (op != FUTEX_STATE_LOAD && op != FUTEX_STATE_UNLOAD)
 		return -1;
 
-	pr_info("MAS inherit, enter\n");
+	pr_info("MAS inherit, enter state=%d\n", state->load);
 
 	/* Get the sum of all the futex state load on the task */
 	sumload = get_futex_state_sumload(task);
@@ -1002,25 +1002,25 @@ int futex_state_inherit(struct task_struct *task,
 
 static int get_futex_state(struct task_struct *owner,
 													union futex_key *key,
-													struct futex_state *ret_state)
+													struct futex_state **state_ret)
 {
 	/* Check if the key match a state or it's the first task to wait */
-	fetch_futex_state_local(owner, key, &ret_state);
-	if (!ret_state) {
+	fetch_futex_state_local(owner, key, state_ret);
+	if (!*state_ret) {
 		/* It's the first task to wait so we create the state */
-		ret_state = kmem_cache_zalloc(kmem_state_cache, GFP_KERNEL);
-		ret_state->key = key;
-		ret_state->owner = owner;
-		ret_state->load = 0;
-		kref_init(&ret_state->refcount);
-		add_futex_state_global(ret_state);
-		add_futex_state_local(ret_state);
+		*state_ret = kmem_cache_zalloc(kmem_state_cache, GFP_KERNEL);
+		(*state_ret)->key = key;
+		(*state_ret)->owner = owner;
+		(*state_ret)->load = 0;
+		kref_init(&(*state_ret)->refcount);
+		add_futex_state_global(*state_ret);
+		add_futex_state_local(*state_ret);
 	} else {
 		/* Dealloc the state key */
 		put_futex_key(key);
 		kmem_cache_free(kmem_state_key_cache, key);
 	}
-	kref_get(&ret_state->refcount);
+	kref_get(&(*state_ret)->refcount);
 
 	return 0;
 }
@@ -3041,7 +3041,7 @@ retry:
 		goto out_dealloc_put_key;
 
 	/* Get the futex state associed to the key, if not exists creating one */
-	get_futex_state(owner, key, state);
+	get_futex_state(owner, key, &state);
 	/* Current task will be waiting on the futex state */
 	current->waiting_futex_state = state;
 	/* Apply the load inherit */

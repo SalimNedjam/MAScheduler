@@ -74,19 +74,23 @@ Les champs ajoutés sont les suivants:
 \subsubsection{Shrinker}
 
 Les shrinker permettent une optimisation mémoire.
-Dans notre cas leur utilisation n'est pas possible. En effet, on ne peut pas se permettre de supprimer ou bien de libérer une référence d'une structure \verb|futex_state| en cours d'utilisation, cela peut compromettre tout le mécanisme de verrouillage des futex.
+Dans notre cas leur utilisation n'est pas possible. En effet, on ne peut pas se permettre 
+de supprimer ou bien de libérer une référence d'une structure \verb|futex_state| en cours 
+d'utilisation, cela peut compromettre tout le mécanisme de verrouillage des futex.
 
 
 \subsubsection{Fonctionnement}
 
-Pour que les informations transmises reflètent l'état exact du futex
-à un instant \textit{t}, il faut que la structure \verb|futex_state| soit mise à jour
-à chaque changement du propriétaire du futex.
-Ainsi, quand une tâche souhaite prendre un futex déjà détenu un \verb|futex_state|
-est créé si
+Lorsqu'une tâche souhaite prendre un verrou déjà détenu elle passe en mode kernel. 
+C'est là que notre mécanisme rentre en jeu.
 
-Par conséquent, chaque processus après avoir manipulé le futex 
-devra chercher dans une liste chaînée la structure \verb|futex_state| associée au 
-futex et la mettre à jour avec la valeur courante du verrou. Ainsi, à tout moment 
-le kernel peut savoir sur quel futex un processus prioritaire est endormi et quel
-est le processus qui détient ce futex.
+L'appel système place dans \verb|uaddr| l'adresse du verrou côté user. 
+Sa valeur peut être récupérée avec \verb|get_user(uval, uaddr)|,
+et ainsi avec une opération bit à bit de récupérer le pid du propriétaire.
+Par la suite la
+\\
+
+\noindent \textbf{Prise de verrou}
+
+
+

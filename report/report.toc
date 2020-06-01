@@ -17,4 +17,4 @@
 \contentsline {subsubsection}{\numberline {5.1.1}Structure}{10}
 \contentsline {subsubsection}{\numberline {5.1.2}Shrinker}{11}
 \contentsline {subsubsection}{\numberline {5.1.3}Fonctionnement}{11}
-\contentsline {section}{\numberline {6}Benchmark}{13}
+\contentsline {section}{\numberline {6}Benchmark}{12}
