@@ -41,7 +41,7 @@ struct futex_state {
 	struct list_head list_global;
 	struct list_head list_local;
 	struct task_struct *owner;
-	struct rt_mutex mutex;
+	raw_spinlock_t spin_lock;
 	struct kref refcount;
 	int load;
 	union futex_key *key;

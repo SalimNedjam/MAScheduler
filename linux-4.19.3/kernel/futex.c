@@ -847,7 +847,10 @@ int get_futex_state_sumload(struct task_struct *task)
 
 	mutex_lock(&task->futex_state_lock);
 	list_for_each_entry(state, &task->futex_state_list, list_local) {
+		raw_spin_lock(&state->spin_lock);
 		sum += state->load;
+		raw_spin_unlock(&state->spin_lock);
+
 	}
 	mutex_unlock(&task->futex_state_lock);
 
@@ -948,8 +951,13 @@ int fixup_state_owner_current(struct futex_state *state)
 {
 	int last_owner = task_pid_vnr(state->owner);
 	/* Current task became the owner, load decrement */
+	raw_spin_lock(&state->spin_lock);
+
 	state->owner = current;
 	state->load--;
+
+	raw_spin_unlock(&state->spin_lock);
+
 	add_futex_state_local(state);
 	/* Set the priority */
 	futex_state_prio(state->owner);
@@ -989,7 +997,10 @@ int futex_state_inherit(struct task_struct *task,
 	 */
 	do {
 		m_state = state;
+		raw_spin_lock(&state->spin_lock);
 		state->load += (sumload + 1) * op;
+		raw_spin_unlock(&state->spin_lock);
+
 		pr_info("MAS inherit, owner=%d futex_state=%p futex_state->load=%d\n",
 			task_pid_vnr(state->owner), state, state->load);
 	}	while ((state = state->owner->waiting_futex_state) != NULL);
@@ -1001,8 +1012,8 @@ int futex_state_inherit(struct task_struct *task,
 }
 
 static int get_futex_state(struct task_struct *owner,
-													union futex_key *key,
-													struct futex_state **state_ret)
+				union futex_key *key,
+				struct futex_state **state_ret)
 {
 	/* Check if the key match a state or it's the first task to wait */
 	fetch_futex_state_local(owner, key, state_ret);
@@ -1013,6 +1024,7 @@ static int get_futex_state(struct task_struct *owner,
 		(*state_ret)->owner = owner;
 		(*state_ret)->load = 0;
 		kref_init(&(*state_ret)->refcount);
+		raw_spin_lock_init(&(*state_ret)->spin_lock);
 		add_futex_state_global(*state_ret);
 		add_futex_state_local(*state_ret);
 	} else {
