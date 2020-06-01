@@ -62,6 +62,7 @@
 #include <linux/random.h>
 #include <linux/rcuwait.h>
 #include <linux/compat.h>
+#include <linux/kref.h>
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>

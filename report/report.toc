@@ -6,13 +6,15 @@
 \contentsline {section}{\numberline {3}Scheduler}{5}
 \contentsline {subsection}{\numberline {3.1}L'arbre rbtree}{5}
 \contentsline {subsection}{\numberline {3.2}Poids et timeslice}{5}
-\contentsline {subsection}{\numberline {3.3}Horloge virtuelle}{5}
-\contentsline {section}{\numberline {4}Sc\IeC {\'e}nario}{7}
-\contentsline {subsection}{\numberline {4.1}Charge}{7}
-\contentsline {subsubsection}{\numberline {4.1.1}Augmentation de la priorit\IeC {\'e}}{7}
-\contentsline {subsubsection}{\numberline {4.1.2}Calcul de charge}{7}
-\contentsline {subsubsection}{\numberline {4.1.3}H\IeC {\'e}ritage de charge}{8}
-\contentsline {subsection}{\numberline {4.2}H\IeC {\'e}ritage de priorit\IeC {\'e}}{9}
-\contentsline {section}{\numberline {5}Impl\IeC {\'e}mentation}{11}
-\contentsline {subsection}{\numberline {5.1}\IeC {\'E}tat du futex}{11}
+\contentsline {subsection}{\numberline {3.3}Horloge virtuelle}{6}
+\contentsline {section}{\numberline {4}Sc\IeC {\'e}nario}{8}
+\contentsline {subsection}{\numberline {4.1}Charge}{8}
+\contentsline {subsubsection}{\numberline {4.1.1}Augmentation de la priorit\IeC {\'e}}{8}
+\contentsline {subsubsection}{\numberline {4.1.2}Calcul de charge}{8}
+\contentsline {subsubsection}{\numberline {4.1.3}H\IeC {\'e}ritage de charge}{9}
+\contentsline {section}{\numberline {5}Impl\IeC {\'e}mentation}{10}
+\contentsline {subsection}{\numberline {5.1}\IeC {\'E}tat du futex}{10}
+\contentsline {subsubsection}{\numberline {5.1.1}Structure}{10}
+\contentsline {subsubsection}{\numberline {5.1.2}Shrinker}{11}
+\contentsline {subsubsection}{\numberline {5.1.3}Fonctionnement}{11}
 \contentsline {section}{\numberline {6}Benchmark}{13}

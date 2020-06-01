@@ -4,6 +4,9 @@
 
 #include <linux/ktime.h>
 #include <uapi/linux/futex.h>
+#include <linux/rtmutex.h>
+
+#include <linux/kref.h>
 
 struct inode;
 struct mm_struct;
@@ -24,6 +27,26 @@ extern int futex_state_inherit(struct task_struct *task,
 
 #define FUTEX_STATE_LOAD 		1
 #define FUTEX_STATE_UNLOAD	-1
+
+/**
+ * struct futex_state - The state struct to monitor futex owner
+ * @list: 	the list of the states                                                                                               :		priority-sorted list of tasks waiting on this futex
+ * @mutex: 	the lock of the state
+ * @owner: 	the the task_struct if the owner of the futex
+ * @refcount:	the kref counter
+ * @load: 	the futex load, represent the number of waiters on the futex		
+ * @key: 	the key the futex is hashed on
+ */
+struct futex_state {
+	struct list_head list_global;
+	struct list_head list_local;
+	struct task_struct *owner;
+	struct rt_mutex mutex;
+	struct kref refcount;
+	int load;
+	union futex_key *key;
+} __randomize_layout;
+
 
 /*
  * Futexes are matched on equal values of this key.

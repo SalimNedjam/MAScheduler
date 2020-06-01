@@ -1,7 +1,11 @@
 \section{Scheduler}
 
 Depuis sa version 2.6.23 le kernel utilise le Completely Fair Scheduler (CFS),
-il est aujourd'hui le scheduler par défaut.
+il est aujourd'hui le scheduler par défaut. Le but du CFS est de proposer un ordonnancement
+idéal pour le multitasking, où la puissance du CPU est partagée entre les processus.
+Or ce modèle n'est pas possible, un CPU ne peut exécuter qu'un flot d'exécution à la
+fois. Dans cette partie nous introduirons les mécanismes mis en œuvre par le CFS pour
+imiter un multitasking parfait. 
 
 \subsection{L'arbre rbtree}
 Le CFS fonctionne sur un système d'arbre: le \verb|rbtree|. L'arbre permet de

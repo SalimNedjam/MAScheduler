@@ -217,24 +217,6 @@ struct futex_pi_state {
 } __randomize_layout;
 
 
-/**
- * struct futex_state - The state struct to monitor futex owner
- * @list: 	the list of the states                                                                                               :		priority-sorted list of tasks waiting on this futex
- * @mutex: 	the lock of the state
- * @owner: 	the the task_struct if the owner of the futex
- * @refcount:	the kref counter
- * @load: 	the futex load, represent the number of waiters on the futex		
- * @key: 	the key the futex is hashed on
- */
-struct futex_state {
-	struct list_head list_global;
-	struct list_head list_local;
-	struct rt_mutex mutex;
-	struct task_struct *owner;
-	struct kref refcount;
-	int load;
-	union futex_key *key;
-} __randomize_layout;
 
 //the head list of states   
 static LIST_HEAD(state_list);

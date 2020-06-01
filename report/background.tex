@@ -50,4 +50,3 @@ de la glibc qui essaye, dans un premier temps, de faire un test and set atomique
 Dès lors que le thread détenant le verrou libéra le futex, un nouvel appel système sera nécessaire. Une fois côté kernel, une recherche est faite dans la table de hash, introduite précédemment, afin de trouver les autres tâches en attente du futex. Avant de sortir du kernel le thread réveillera les tâches bloquées.
 \\
 
-\textit{Nous illustrerons la successions des appels de fonction user et kernel mode ici.}
