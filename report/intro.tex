@@ -24,9 +24,8 @@ ressource critique protégée par un verrou.
 En effet, si le processus, qui détient le verrou, empêche un ou plusieurs processus 
 d'avancer il est important de le faire passer en priorité dans les 
 élections. Ainsi, en favorisant le processus propriétaire du verrou, ce dernier 
-pourra arriver au point de libération de la ressource plus rapidement, et donc de 
-débloquer les autres processus tout en respectant la prévalence des autres processus 
-indépendants pour respecter la sémantique du CFS (Completly Fair scheduler).
+pourra arriver plus rapidement au point de libération de la ressource, et ainsi 
+débloquer les autres processus en attente.
 \\
 
 Les objectifs de notre projet ont donc été les suivants: optimiser les
@@ -41,4 +40,4 @@ les différents points qui font le lien entre la glibc et le kernel, notamment
 pour transmettre l'identité du processus propriétaire du verrou. Nous introduirons
 le scheduler et son fonctionnement, ainsi que les différents scénarios qui permettent
 de résoudre le problème. Enfin, nous présenterons notre implémentation et les
-benchmarks.
+benchmarks. Pour conclure nous discuterons sur les améliorations et les limites de notre solution.

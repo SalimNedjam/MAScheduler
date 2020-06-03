@@ -645,7 +645,7 @@ struct task_struct {
 	 * MAS code:
 	 */
 	struct list_head futex_state_list;
-	struct mutex futex_state_lock;
+	raw_spinlock_t futex_state_lock;
 	struct futex_state *waiting_futex_state;
 
 	const struct sched_class	*sched_class;

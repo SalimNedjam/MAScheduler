@@ -6,13 +6,10 @@ du futex (\verb|<kernel/futex.c>|) et d'agir directement sur les priorités des 
 
 L'ensemble de nos modifications dans le kernel on été préfixé par un commentaire \verb|MAS code|.
 
-\subsection{État du futex}
+\subsection{Structure}
 
 La première étape à donc été de créer un mécanisme permettant au kernel de pouvoir facilement
 suivre l'évolution du propriétaire d'un futex.
-
-\subsubsection{Structure}
-
 Nous avons donc ajouté une structure \verb|futex_state| qui représente l'état d'un
 futex:
 
@@ -21,7 +18,7 @@ struct futex_state {
 	struct list_head list_global;
 	struct list_head list_local;
 	struct task_struct *owner;
-	struct rt_mutex mutex;
+	raw_spinlock_t spin_lock;
 	struct kref refcount;
 	int load;
 	union futex_key *key;
@@ -35,7 +32,7 @@ Les champs sont les suivants:
 	propriétaire.
 	\item \verb|owner| est une référence sur la \verb|task_struct| du propriétaire du futex.
 	
-	\item \verb|mutex| permet d'éviter les accès concurrents lors de la manipulation de
+	\item \verb|spin_lock| permet d'éviter les accès concurrents lors de la manipulation de
 	la structure.
 	
 	\item \verb|kref| est un compteur de référence pour protéger la suppression
@@ -54,7 +51,7 @@ Une modification sur la structure \verb|task_struct| a été nécessaire:
 struct task_struct {
 	...
 	struct list_head futex_state_list;
-	struct mutex futex_state_lock;
+	raw_spinlock_t futex_state_lock;
 	struct futex_state *waiting_futex_state;
 	...
 }
@@ -71,7 +68,7 @@ Les champs ajoutés sont les suivants:
 	la tâche attend.
 \end{itemize}
 
-\subsubsection{Fonctionnement}
+\subsection{Fonctionnement}
 
 Lorsqu'une tâche souhaite prendre un verrou déjà détenu elle passe en mode kernel. 
 C'est là que notre mécanisme rentre en jeu.
@@ -79,14 +76,13 @@ C'est là que notre mécanisme rentre en jeu.
 L'appel système place dans \verb|uaddr| l'adresse du verrou côté user. 
 La valeur du verrou, contenant le pid du propriétaire, peut être récupérée avec \verb|get_user(uval, uaddr)|.
 Ainsi, la tâche qui va se bloquer en attente du verrou connaît le pid du propriétaire avec une simple
-opération bit à bit sur \verb|uval| et peut accéder à la structure \verb|task_struct| avec
+opération bit à bit sur \verb|uval| et peut accéder sa structure \verb|task_struct| avec
 \verb|find_task_by_vpid(vpid)|.
 
-\vspace{0.25cm}
-\noindent \textbf{Prise de verrou}
+\subsubsection{Prise de verrou}
 
-La première étape est de récupérer la \verb|futex_key| associé au futex sur lequel la tâche va
-se bloquer:
+Lors de la prise de verrou notre première étape est de récupérer la \verb|futex_key| 
+associé au futex sur lequel la tâche va se bloquer:
 \begin{lstlisting}[tabsize=4]
 	get_futex_key(uaddr, 0, key, VERIFY_READ);
 \end{lstlisting}
@@ -108,18 +104,19 @@ du \verb|futex_state| précédemment récupérée à la \verb|task_struct|:
 	current->waiting_futex_state = state;
 \end{lstlisting}
 
-\vspace{0.25cm}
-\noindent \textbf{Héritage et priorité}
+\subsubsection{Héritage de charge}
 
-Après l'ajout de la tâche courante comme tâche en attente du futex il faut modifier la priorité du
-propriétaire avec:
+Après l'ajout de la tâche courante comme tâche en attente du futex il faut appliquer le changement de charge
+par héritage:
 \begin{lstlisting}[tabsize=4]
 	futex_state_inherit(current, state, 
 						FUTEX_STATE_LOAD);
 \end{lstlisting}
 
-Dans un premier temps la somme des poids des éventuelles \verb|futex_state| que la tâche courante détient
-est calculée avec:
+La tâche courante \verb|current| peut elle aussi bloquer plusieurs tâches sur plusieurs verrous, ainsi il est important de ne pas
+simplement incrémenter de 1 le poids du futex sur lequel on va attendre, mais de la somme des poids
+des \verb|futex_state| que la tâche courante détient. Cette somme est calculée avec un simple parcourt sur la
+liste locale des \verb|futex_state| de la tâche:
 \begin{lstlisting}[tabsize=4]
 	get_futex_state_sumload(task);
 \end{lstlisting}
@@ -136,8 +133,8 @@ int futex_state_inherit(struct task_struct *task,
 						struct futex_state *state,
 						int op)
 {
-	int sumload = 0;
 	struct futex_state *m_state;
+	int sumload;
 	
 	if (op != FUTEX_STATE_LOAD && 
 		op != FUTEX_STATE_UNLOAD)
@@ -162,8 +159,7 @@ int futex_state_inherit(struct task_struct *task,
 }
 \end{lstlisting}
 
-\vspace{0.25cm}
-\noindent \textbf{Application de la priorité}
+\subsubsection{Application de la priorité}
 
 La fonction \verb|futex_state_prio(task)| permet de définir la priorité d'une tâche en se
 basant sur son poids. L'implémentation finale est très simple et peut être la cible
@@ -184,15 +180,14 @@ void futex_state_prio(struct task_struct *task)
 
 La priorité de la tâche est augmentée du nombre de tâche qu'elle bloque, borné sur 10.
 
-\vspace{0.25cm}
-\noindent \textbf{Changement de propriétaire}
+\subsubsection{Changement de propriétaire}
 
 Lorsqu'une tâche détenant un verrou le relâche, celui-ci réveille toutes les autres tâches en attente
 du verrou. La tâche qui sera le nouveau propriétaire le déclare avec la fonction:
 \begin{lstlisting}[tabsize=4]
 	fixup_state_owner_current(state);
 \end{lstlisting}
-Cette fonction va notamment modifier le \verb|owner| du \verb|futex_state|, décrémenter son poids, ajouter 
+Cette fonction va notamment modifier le \verb|owner| de \verb|state|, décrémenter son poids, ajouter 
 le \verb|state| à sa liste locale, et ainsi pouvoir appliquer sa priorité basé sur ces changements avec
 \verb|futex_state_prio(task)|. Le champs \verb|waiting_futex_state| de la tâche courante est marqué à \verb|NULL|
 pour indiquer celle-ci n'attend plus sur un futex. Voici le code de la fonction:
@@ -200,10 +195,12 @@ pour indiquer celle-ci n'attend plus sur un futex. Voici le code de la fonction:
 \begin{lstlisting}[tabsize=4]
 int fixup_state_owner_current(struct futex_state *state)
 {
+	int sumload = get_futex_state_sumload(current);
 	state->owner = current;
-	state->load--;
-	
 	add_futex_state_local(state);
+
+	state->load -= (sumload + 1);	
+
 	futex_state_prio(state->owner);
 	
 	kref_put(&state->refcount, free_futex_state);
@@ -213,10 +210,12 @@ int fixup_state_owner_current(struct futex_state *state)
 }
 \end{lstlisting}
 
-\vspace{0.25cm}
-\noindent \textbf{Relâchement d'un verrou}
+Il faut noter que le poids est décrémenté de 1 plus la somme des poids des \verb|futex_state| 
+que le nouveau propriétaire détient avant l'ajout du \verb|state|. En effet, en se bloquant on a hérité notre \verb|sumload| au \verb|state|, en devenant son propriétaire il faut donc déshériter ce même \verb|sumload|.
 
-Lors du relâchement d'un verrou la tâche courante doit récupérer le \verb|futex_state| associé:
+\subsubsection{Relâchement d'un verrou}
+
+Lors du relâchement d'un verrou la tâche courante, le propriétaire, doit récupérer le \verb|futex_state| associé:
 \begin{lstlisting}[tabsize=4]
 	fetch_futex_state_local(current, key, &state);
 \end{lstlisting}
@@ -229,13 +228,15 @@ Après ces changements la priorité de la tâche courante doit être mis à jour
 	futex_state_prio(current);
 \end{lstlisting}
 
-\vspace{0.25cm}
-\noindent \textbf{Mort subite}
+Ainsi, si la tâche relâche son dernier verrou alors sa liste locale devient vide et l'appel
+à \verb|futex_state_prio(task)| annulera les modifications de priorité apportées.
+
+\subsubsection{Mort subite}
 
 Il se peut qu'un processus meurt alors qu'il attend sur un verrou. De la même manière que lors de
 l'attente sur un verrou, il faut cette fois-ci décrémenter par récurrence sur l'arbre 
 le poids des \verb|futex_state|.
-Une modification du code \verb|do_exit(long code)| dans \verb|<kernel/exit.c>| a donc été nécessaire:
+Une modification de la fonction \verb|do_exit| dans \verb|<kernel/exit.c>| a donc été nécessaire:
 \begin{lstlisting}[tabsize=4]
 if (tsk->waiting_futex_state != NULL) {
 	futex_state_inherit(tsk, tsk->waiting_futex_state,
@@ -245,10 +246,10 @@ if (tsk->waiting_futex_state != NULL) {
 }
 \end{lstlisting}
 
-Si la tâche courante attend sur un futex on applique donc un dés-héritage et on relâche la référence sur le
+Si la tâche courante attend sur un futex on applique donc un deshéritage et on relâche la référence sur le
 \verb|futex_state|. 
 
-\subsubsection{Shrinker}
+\subsection{Shrinker}
 
 Les shrinker permettent une optimisation mémoire.
 Dans notre cas leur utilisation n'est pas possible. En effet, on ne peut pas se permettre 

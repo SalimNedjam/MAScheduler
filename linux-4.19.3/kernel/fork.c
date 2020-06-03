@@ -1712,7 +1712,7 @@ static __latent_entropy struct task_struct *copy_process(
 	 * MAS code:
 	 */
 	/* Init the futex_state_lock */
-	mutex_init(&p->futex_state_lock);
+	raw_spin_lock_init(&p->futex_state_lock);
 	/* Init the futex_state_list */
 	INIT_LIST_HEAD(&p->futex_state_list);
 	/* Init the waiting_futex_state as NULL */

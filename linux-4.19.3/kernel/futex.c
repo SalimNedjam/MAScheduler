@@ -827,14 +827,17 @@ int fetch_futex_state_local(struct task_struct *task,
 {
 	struct futex_state *state, *ret = NULL;
 
-	mutex_lock(&task->futex_state_lock);
+	//mutex_lock(&task->futex_state_lock);
+	raw_spin_lock(&task->futex_state_lock);
+
 	list_for_each_entry(state, &task->futex_state_list, list_local) {
 		if (match_futex(key, state->key)) {
 			ret = state;
 			break;
 		}
 	}
-	mutex_unlock(&task->futex_state_lock);
+	//mutex_unlock(&task->futex_state_lock);
+	raw_spin_unlock(&task->futex_state_lock);
 
 	*state_ret = ret;
 	return 1;
@@ -845,32 +848,42 @@ int get_futex_state_sumload(struct task_struct *task)
 	struct futex_state *state;
 	int sum = 0;
 
-	mutex_lock(&task->futex_state_lock);
+	//mutex_lock(&task->futex_state_lock);
+	raw_spin_lock(&task->futex_state_lock);
+
 	list_for_each_entry(state, &task->futex_state_list, list_local) {
+		pr_info("(%d) MAS get futex sumload, state=%p\n", task->pid, state); 
 		raw_spin_lock(&state->spin_lock);
 		sum += state->load;
 		raw_spin_unlock(&state->spin_lock);
 
 	}
-	mutex_unlock(&task->futex_state_lock);
+
+	raw_spin_unlock(&task->futex_state_lock);
+	//mutex_unlock(&task->futex_state_lock);
 
 	return sum;
 }
 
 int add_futex_state_local(struct futex_state *state)
 {
-	mutex_lock(&state->owner->futex_state_lock);
+
+	raw_spin_lock(&state->owner->futex_state_lock);
+	//mutex_lock(&state->owner->futex_state_lock);
 	list_add(&state->list_local, &state->owner->futex_state_list);
-	mutex_unlock(&state->owner->futex_state_lock);
+	//mutex_unlock(&state->owner->futex_state_lock);
+	raw_spin_unlock(&state->owner->futex_state_lock);
 
 	return 0;
 }
 
 int del_futex_state_local(struct futex_state *state)
 {
-	mutex_lock(&state->owner->futex_state_lock);
+	raw_spin_lock(&state->owner->futex_state_lock);
+	//mutex_lock(&state->owner->futex_state_lock);
 	list_del(&state->list_local);
-	mutex_unlock(&state->owner->futex_state_lock);
+	//mutex_unlock(&state->owner->futex_state_lock);
+	raw_spin_unlock(&state->owner->futex_state_lock);
 
 	return 0;
 }
@@ -910,8 +923,10 @@ void free_futex_state(struct kref *kref)
 	struct futex_state *state =
 		container_of(kref, struct futex_state, refcount);
 
-	del_futex_state_global(state);
+	//del_futex_state_global(state);
 	del_futex_state_local(state);
+
+	pr_info("(%d) MAS free state, state=%p\n", current->pid, state);
 
 	put_futex_key(state->key);
 	kmem_cache_free(kmem_state_key_cache, state->key);
@@ -933,8 +948,8 @@ void futex_state_prio(struct task_struct *task)
 
 	task->normal_prio = task->static_prio - load;
 
-	pr_info("MAS set prio, task=%d static_prio=%d normal_prio=%d load=%d\n", 
-		task_pid_vnr(task), task->static_prio, task->normal_prio, load);
+	pr_info("(%d) MAS set prio, task=%d static_prio=%d normal_prio=%d load=%d\n", 
+		current->pid, task_pid_vnr(task), task->static_prio, task->normal_prio, load);
 
 }
 
@@ -950,23 +965,30 @@ void futex_state_prio(struct task_struct *task)
 int fixup_state_owner_current(struct futex_state *state)
 {
 	int last_owner = task_pid_vnr(state->owner);
+	int sumload;
+
+	sumload = get_futex_state_sumload(current);
+	state->owner = current;
+	add_futex_state_local(state);
 	/* Current task became the owner, load decrement */
 	raw_spin_lock(&state->spin_lock);
 
-	state->owner = current;
-	state->load--;
+	pr_info("(%d) MAS fixup, state=%p state->load=%d sumload=%d\n", current->pid,
+		state, state->load, sumload); 
+	state->load -= (sumload + 1);
 
 	raw_spin_unlock(&state->spin_lock);
+	
 
-	add_futex_state_local(state);
 	/* Set the priority */
 	futex_state_prio(state->owner);
 	/* Current task no longer wait on the futex */
 	kref_put(&state->refcount, free_futex_state);
 	current->waiting_futex_state = NULL;
-
-	pr_info("MAS fixup owner, futex_state=%p last_owner=%d new_owner=%d\n",
-		state, last_owner, task_pid_vnr(state->owner));
+	
+	pr_info("(%d) MAS fixup owner, futex_state=%p last_owner=%d new_owner=%d\n",
+		current->pid, state, last_owner, task_pid_vnr(state->owner));
+	
 
 	return 0;
 }
@@ -981,12 +1003,12 @@ int futex_state_inherit(struct task_struct *task,
 	if (op != FUTEX_STATE_LOAD && op != FUTEX_STATE_UNLOAD)
 		return -1;
 
-	pr_info("MAS inherit, enter state=%d\n", state->load);
+	pr_info("(%d) MAS inherit, enter\n", current->pid);
 
 	/* Get the sum of all the futex state load on the task */
 	sumload = get_futex_state_sumload(task);
 
-	pr_info("MAS inherit, sumload=%d\n", sumload);
+	pr_info("(%d) MAS inherit, sumload=%d\n", current->pid, sumload);
 
 	/*
 	 * Apply the load inheritance 
@@ -1001,13 +1023,13 @@ int futex_state_inherit(struct task_struct *task,
 		state->load += (sumload + 1) * op;
 		raw_spin_unlock(&state->spin_lock);
 
-		pr_info("MAS inherit, owner=%d futex_state=%p futex_state->load=%d\n",
-			task_pid_vnr(state->owner), state, state->load);
+		pr_info("(%d) MAS inherit, owner=%d futex_state=%p futex_state->load=%d\n",
+			current->pid, task_pid_vnr(state->owner), state, state->load);
 	}	while ((state = state->owner->waiting_futex_state) != NULL);
-	pr_info("MAS inherit, set prio\n");
+	pr_info("(%d) MAS inherit, set prio\n", current->pid);
 	/* Set the priority based on the state load to the master futex owner */
 	futex_state_prio(m_state->owner);
-	pr_info("MAS inherit, leave\n");
+	pr_info("(%d) MAS inherit, leave\n", current->pid);
 	return 0;
 }
 
@@ -1025,9 +1047,13 @@ static int get_futex_state(struct task_struct *owner,
 		(*state_ret)->load = 0;
 		kref_init(&(*state_ret)->refcount);
 		raw_spin_lock_init(&(*state_ret)->spin_lock);
-		add_futex_state_global(*state_ret);
+		//add_futex_state_global(*state_ret);
 		add_futex_state_local(*state_ret);
+		pr_info("(%d) MAS get futex state, state created =%p\n", current->pid,
+			*state_ret);
 	} else {
+		pr_info("(%d) MAS get futex state, state already exists =%p\n",
+			current->pid, *state_ret);
 		/* Dealloc the state key */
 		put_futex_key(key);
 		kmem_cache_free(kmem_state_key_cache, key);
@@ -3058,8 +3084,10 @@ retry:
 	current->waiting_futex_state = state;
 	/* Apply the load inherit */
 	futex_state_inherit(current, state, FUTEX_STATE_LOAD);
-	pr_info("MAS waiting, task=%d futex_state=%p load=%d owner->normal_prio=%d\n",
-		task_pid_vnr(current), state, state->load, state->owner->normal_prio);
+	pr_info("(%d) MAS waiting, owner=%d futex_state=%p load=%d \
+					owner->normal_prio=%d\n",
+					current->pid, task_pid_vnr(state->owner), state, state->load, 
+					state->owner->normal_prio);
 
 retry_private:
 	hb = queue_lock(&q);
@@ -3075,6 +3103,7 @@ retry_private:
 			/* We got the lock. */
 			ret = 0;
 			/* Put this task as owner of futex state */
+			pr_info("(%d) MAS fixup got the lock\n", current->pid);
 			fixup_state_owner_current(state);
 			goto out_unlock_put_key;
 		case -EFAULT:
@@ -3269,12 +3298,12 @@ retry:
 	fetch_futex_state_local(current, &key, &state);
 	if (state) {
 		del_futex_state_local(state);
-		pr_info("MAS unlock, futex_state=%p\n", state);
+		pr_info("(%d) MAS unlock, futex_state=%p\n", current->pid, state);
+		/* When release a futex the load change, set the new priority */
+		futex_state_prio(current);
 	} else {
-		pr_info("MAS unlock, no futex_state");
+		pr_info("(%d) MAS unlock, no futex_state", current->pid);
 	}
-	/* When release a futex the load change, set the new priority */
-	futex_state_prio(current);
 
 	/*
 	 * Check waiters first. We do not trust user space values at
