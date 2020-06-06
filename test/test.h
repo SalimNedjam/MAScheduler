@@ -7,13 +7,13 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 
-#ifndef BENCH_H
-#define BENCH_H
-
-#define VNAME(varname) #varname
+#ifndef TEST_H
+#define TEST_H
 
 pthread_mutexattr_t attr;
 struct table *lock_table;
+pthread_t **threads;
+int nb_threads, max_threads;
 
 struct node
 {
@@ -84,7 +84,7 @@ pthread_mutex_t *lookup(struct table *t, int key)
     return NULL;
 }
 
-void job(char *name, int load)
+void job(char const *name, int load)
 {
   int pid = syscall(SYS_gettid);
   printf("JOB %s (%d) start\n", name, pid);
@@ -95,28 +95,41 @@ void job(char *name, int load)
   printf("JOB %s (%d) finish\n", name, pid);
 }
 
-int create(pthread_t *thread, int delay, void *(*routine) (void *))
+pthread_t *start_job(int delay, void *(*routine) (void *))
 {
+  pthread_t *thread;
 	pthread_attr_t attr_thread;
   int ret;
 
-	ret = pthread_attr_init(&attr_thread);
+  if (nb_threads >= max_threads) {
+    printf("*** max threads reached\n");
+    return NULL;
+  }
+
+
+  thread = (pthread_t*) malloc(sizeof(pthread_t));
+	 pthread_attr_init(&attr_thread);
   
+  threads[nb_threads] = thread;
+  nb_threads++;
+
+
 	if (delay > 0)
 		usleep(delay);
 
-  ret = pthread_create(thread, &attr_thread, routine, NULL);
-  if (ret != 0)
-		printf("cannot create thread %s\n", strerror(ret));
+  if ((ret = pthread_create(thread, &attr_thread, routine, NULL)) != 0) {
+		printf("*** cannot create thread %s\n", strerror(ret));
+    return NULL;
+  }
 		
-  return ret;
+  return thread;
 }
 
 int add_lock(int key)
 {
   pthread_mutex_t *lock = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
   if (pthread_mutex_init(lock, &attr) != 0) {
-		printf("mutex init failed\n");
+		printf("*** mutex init failed\n");
 		return -1;
 	}
 
@@ -145,39 +158,55 @@ int unlock(int key)
   return 0;
 }
 
-int bench_start(int protocol, int nb_lock, ...)
+int join()
 {
-  va_list ll;
-  int lock, i;
+  int i;
 
+  for (i = 0; i < nb_threads; i++)
+    pthread_join(*threads[i], NULL);
+  
+  return 0;
+}
+
+int set_protocol(int protocol)
+{
   if (pthread_mutexattr_init(&attr) == -1) {
-		perror("mutexattr_init error");
+		perror("*** mutexattr_init error");
 		return -1;
 	}
 	
 	pthread_mutexattr_setprotocol(&attr, protocol);
   
-  lock_table = create_table(nb_lock);
+  return 0;
+}
 
-  va_start(ll, nb_lock);
-  for (i = 0; i < nb_lock; i++) {
+int set_threads(int val)
+{
+  threads = (pthread_t**) malloc(sizeof(pthread_t*) * val);
+  max_threads = val;
+  nb_threads = 0;
+
+  if (threads == NULL)
+    return -1;
+
+  return 0;
+}
+
+int set_locks(int nb_locks, ...)
+{
+  va_list ll;
+  int lock, i;
+
+  lock_table = create_table(nb_locks);
+
+  va_start(ll, nb_locks);
+  for (i = 0; i < nb_locks; i++) {
     lock = va_arg(ll, int);
     add_lock(lock);
   }
   va_end(ll);
 
-  printf("*** Start benchmark\n");
-
   return 0;
 }
-
-
-int bench_exit()
-{
-  printf("*** Exit benchmark\n");
-
-  return 0;
-}
-
 
 #endif

@@ -1,12 +1,18 @@
 
-#include "bench.h"
+#include "test.h"
+
+#define PROTOCOL 		PTHREAD_PRIO_INHERIT
+#define NB_THREADS 	2
+#define NB_LOCKS 		1
+#define LOCKS 			'A'
 
 void *jobA(void *arg)
 {
 	printf("JOB A ...\n");
 	lock('A');
-	job("A");
+	job("A", 1);
 	unlock('A');
+	
 	return NULL;
 }
 
@@ -14,26 +20,27 @@ void *jobB(void *arg)
 {
 	printf("JOB B ...\n");
 	lock('A');
-	job("B");
+	job("B", 1);
 	unlock('A');
+
 	return NULL;
 }
 
-void bench()
+void test()
 {
-	pthread_t A, B;
-
-	create(&A, 0, &jobA);
-	create(&B, 100, &jobB);
-
-  pthread_join(A, NULL);
-  pthread_join(B, NULL);
+	start_job(0, &jobA);
+	start_job(100, &jobB);
+	join();
 }
 
 int main(int argc, const char **argv)
 {
-  bench_start(PTHREAD_PRIO_INHERIT, 1, 'A');
-  bench(); 
-	return bench_exit();
+	set_protocol(PROTOCOL);
+  set_locks(NB_LOCKS, LOCKS);
+	set_threads(NB_THREADS);
+
+  test();
+
+	return 0;
 }
 

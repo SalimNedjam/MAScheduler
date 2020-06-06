@@ -27,6 +27,14 @@ extern int futex_state_inherit(struct task_struct *task,
 
 #define FUTEX_STATE_LOAD 		1
 #define FUTEX_STATE_UNLOAD	-1
+#define FUTEX_STATE_DEBUG	 	1
+
+#define debug_futex_state(fmt, ...) \
+  do { \
+		if (FUTEX_STATE_DEBUG) \
+			pr_info("(pid:%d) MAS %s: " fmt, \
+      	current->pid, __func__, ##__VA_ARGS__); \
+	} while (0)
 
 /**
  * struct futex_state - The state struct to monitor futex owner
@@ -38,8 +46,7 @@ extern int futex_state_inherit(struct task_struct *task,
  * @key: 	the key the futex is hashed on
  */
 struct futex_state {
-	struct list_head list_global;
-	struct list_head list_local;
+	struct list_head list;
 	struct task_struct *owner;
 	raw_spinlock_t spin_lock;
 	struct kref refcount;

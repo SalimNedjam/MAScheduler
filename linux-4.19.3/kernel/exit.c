@@ -779,7 +779,7 @@ void __noreturn do_exit(long code)
 	*/
 	/* If the current exiting task was waiting on a futex */
 	if (tsk->waiting_futex_state != NULL) {
-		pr_info("(%d) MAS exit\n", current->pid);
+		debug_futex_state("exit\n");
 		futex_state_inherit(tsk, tsk->waiting_futex_state, FUTEX_STATE_UNLOAD);
 		kref_put(&tsk->waiting_futex_state->refcount, free_futex_state);
 	}

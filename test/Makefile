@@ -1,10 +1,13 @@
 .PHONY : all clean
-BIN =inherit_load_$(f)
 
-all : $(BIN)
+SRCS = $(wildcard *.c)
+TESTS = $(patsubst %.c,%,$(SRCS))
 
-$(BIN) :  $(BIN).o bench.h
+all : $(TESTS)
+	@echo Tests file compiled
+
+% :  %.c test.h
 	g++ -Wall $^ -std=c++11 -lpthread -o $@
 
 clean :
-	rm -rf *.o *.so $(BIN)
+	rm -rf *.o *.so $(TESTS)
