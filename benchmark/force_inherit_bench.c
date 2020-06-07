@@ -7,7 +7,7 @@
 #include <sys/syscall.h>
 
 #define NB_CHILDS 30
-#define NB_OTHERS 20
+#define NB_OTHERS 100
 
 pthread_t childs[NB_CHILDS];
 pthread_t others[NB_OTHERS];
@@ -17,7 +17,7 @@ void *child_job(void *arg)
 {
 	pthread_mutex_lock(&lock);
 
-	printf("child\n");
+	//printf("child\n");
 
 	for (size_t i = 0; i < 10000; i++)
 		syscall(SYS_gettid);
@@ -43,14 +43,16 @@ void *parent_job(void *arg)
 		i++;
 	}
 
-	printf("parent start\n");
+	//printf("parent start\n");
 
 	for (size_t i = 0; i < 10000 * 100; i++)
 		syscall(SYS_gettid);
 
-	printf("parent end\n");
+	//printf("parent end\n");
+	exit(0);
 
 	pthread_mutex_unlock(&lock);
+
 
 	for (i = 0; i < NB_CHILDS; i++)
 		pthread_join(childs[i], NULL);
@@ -60,12 +62,12 @@ void *parent_job(void *arg)
 
 void *other_job(void *arg)
 {	
-	printf("other start\n");
+	//printf("other start\n");
 
 	for (size_t i = 0; i < 10000 * 100; i++)
 		syscall(SYS_gettid);
 
-	printf("other end\n");
+	//printf("other end\n");
 
 	return NULL;
 }
@@ -82,12 +84,6 @@ void bench(const pthread_mutexattr_t *attr)
 	}
 	pthread_attr_init(&attr_thread);
 
-	pthread_t *parent = (pthread_t*) malloc(sizeof(pthread_t));
-	err = pthread_create(parent, &attr_thread, &parent_job, NULL);
-	
-	if (err != 0)
-			printf("\ncan't create thread :[%s]", strerror(err));
-
 
 	while (i < NB_OTHERS) {
 		err = pthread_create(&(others[i]), &attr_thread, &other_job, NULL);
@@ -95,6 +91,12 @@ void bench(const pthread_mutexattr_t *attr)
 			printf("\ncan't create thread :[%s]", strerror(err));
 		i++;
 	}
+
+	pthread_t *parent = (pthread_t*) malloc(sizeof(pthread_t));
+	err = pthread_create(parent, &attr_thread, &parent_job, NULL);
+	
+	if (err != 0)
+		printf("\ncan't create thread :[%s]", strerror(err));
 
 	pthread_join(*parent, NULL);
 
