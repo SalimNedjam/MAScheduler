@@ -1,0 +1,34 @@
+\babel@toc {french}{}
+\contentsline {section}{\numberline {1}Introduction}{3}
+\contentsline {section}{\numberline {2}Background}{4}
+\contentsline {subsection}{\numberline {2.1}User: glibc et mutex}{4}
+\contentsline {subsection}{\numberline {2.2}Kernel: futex}{5}
+\contentsline {section}{\numberline {3}Scheduler}{6}
+\contentsline {subsection}{\numberline {3.1}L'arbre rbtree}{6}
+\contentsline {subsection}{\numberline {3.2}Poids et timeslice}{6}
+\contentsline {subsection}{\numberline {3.3}Horloge virtuelle}{7}
+\contentsline {section}{\numberline {4}Sc\IeC {\'e}nario}{9}
+\contentsline {subsection}{\numberline {4.1}Monoc\IeC {\oe }ur}{9}
+\contentsline {subsection}{\numberline {4.2}Multic\IeC {\oe }ur}{9}
+\contentsline {subsection}{\numberline {4.3}Charge}{9}
+\contentsline {subsubsection}{\numberline {4.3.1}Augmentation de la priorit\IeC {\'e}}{10}
+\contentsline {subsubsection}{\numberline {4.3.2}Calcul de charge}{10}
+\contentsline {subsubsection}{\numberline {4.3.3}H\IeC {\'e}ritage de charge}{10}
+\contentsline {section}{\numberline {5}Impl\IeC {\'e}mentation}{12}
+\contentsline {subsection}{\numberline {5.1}Structure}{12}
+\contentsline {subsection}{\numberline {5.2}Fonctionnement}{13}
+\contentsline {subsubsection}{\numberline {5.2.1}Prise de verrou}{13}
+\contentsline {subsubsection}{\numberline {5.2.2}H\IeC {\'e}ritage de charge}{14}
+\contentsline {subsubsection}{\numberline {5.2.3}Application de la priorit\IeC {\'e}}{15}
+\contentsline {subsubsection}{\numberline {5.2.4}Changement de propri\IeC {\'e}taire}{16}
+\contentsline {subsubsection}{\numberline {5.2.5}Rel\IeC {\^a}chement d'un verrou}{16}
+\contentsline {subsubsection}{\numberline {5.2.6}Mort subite}{17}
+\contentsline {subsection}{\numberline {5.3}Shrinker}{17}
+\contentsline {section}{\numberline {6}Benchmark}{18}
+\contentsline {section}{\numberline {7}Discussion}{19}
+\contentsline {subsection}{\numberline {7.1}Travaux \IeC {\`a} court terme}{19}
+\contentsline {subsubsection}{\numberline {7.1.1}Poids}{19}
+\contentsline {subsection}{\numberline {7.2}Travaux \IeC {\`a} long terme}{19}
+\contentsline {subsubsection}{\numberline {7.2.1}Priorit\IeC {\'e}}{19}
+\contentsline {subsection}{\numberline {7.3}Limite}{20}
+\contentsline {subsubsection}{\numberline {7.3.1}Contention}{20}

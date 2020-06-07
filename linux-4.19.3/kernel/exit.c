@@ -778,10 +778,13 @@ void __noreturn do_exit(long code)
 	* futex_state_list futex owner
 	*/
 	/* If the current exiting task was waiting on a futex */
-	if (tsk->waiting_futex_state != NULL) {
-		debug_futex_state("exit\n");
-		futex_state_inherit(tsk, tsk->waiting_futex_state, FUTEX_STATE_UNLOAD);
-		kref_put(&tsk->waiting_futex_state->refcount, free_futex_state);
+
+	if (FUTEX_STATE_ENABLE) {
+		if (tsk->waiting_futex_state != NULL) {
+			debug_futex_state("exit\n");
+			futex_state_inherit(tsk, tsk->waiting_futex_state, FUTEX_STATE_UNLOAD);
+			kref_put(&tsk->waiting_futex_state->refcount, free_futex_state);
+		}
 	}
 
 	profile_task_exit(tsk);

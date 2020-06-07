@@ -25,9 +25,12 @@ extern int futex_state_inherit(struct task_struct *task,
 																struct futex_state *state,
 																int op);
 
-#define FUTEX_STATE_LOAD 		1
-#define FUTEX_STATE_UNLOAD	-1
-#define FUTEX_STATE_DEBUG	 	1
+#define FUTEX_STATE_LOAD 			1
+#define FUTEX_STATE_UNLOAD		-1
+#define FUTEX_STATE_MAX_PRIO 	10
+
+extern int FUTEX_STATE_DEBUG;
+extern int FUTEX_STATE_ENABLE;
 
 #define debug_futex_state(fmt, ...) \
   do { \

@@ -15,8 +15,7 @@ futex:
 
 \begin{lstlisting}[tabsize=4]
 struct futex_state {
-	struct list_head list_global;
-	struct list_head list_local;
+	struct list_head list;
 	struct task_struct *owner;
 	raw_spinlock_t spin_lock;
 	struct kref refcount;
@@ -27,9 +26,8 @@ struct futex_state {
 
 Les champs sont les suivants:
 \begin{itemize}
-	\item \verb|list_global| et \verb|list_local| permettent respectivement de
-	créer un chaînage global entre tous les futex, et local entre les futex d'un même
-	propriétaire.
+	\item \verb|list| permet de créer un chaînage entre les futex d'un même propriétaire.
+	
 	\item \verb|owner| est une référence sur la \verb|task_struct| du propriétaire du futex.
 	
 	\item \verb|spin_lock| permet d'éviter les accès concurrents lors de la manipulation de
@@ -59,10 +57,10 @@ struct task_struct {
 
 Les champs ajoutés sont les suivants:
 \begin{itemize}
-	\item \verb|futex_state_list| est la liste locale, elle rassemble l'ensemble des
+	\item \verb|futex_state_list| est l'ensemble des
 	\verb|futex_state| que la tâche détient et sur lesquels d'autres tâches attendent.
 	
-	\item \verb|futex_state_lock| est un verrou pour la manipulation de la liste locale.
+	\item \verb|futex_state_lock| est un verrou pour la manipulation de la liste.
 	
 	\item \verb|waiting_futex_state| est un pointeur vers le \verb|futex_state| sur lequel
 	la tâche attend.
@@ -92,9 +90,9 @@ Ensuite il faut récupérer le \verb|futex_state| associé à cette \verb|futex_
 \end{lstlisting}
 
 Cette fonction va regarder si le \verb|futex_state| associé à la clé \verb|key| existe
-dans la liste locale du \verb|owner|,
-si la structure n'existe pas alors elle sera allouée, initialisée et ajoutée à la liste 
-globale et locale du \verb|owner|, sinon elle sera retournée.
+dans la liste du \verb|owner|,
+si la structure n'existe pas alors elle sera allouée, initialisée et ajoutée à la liste du \verb|owner|,
+sinon elle sera retournée.
 Dans les deux cas le compteur de référence du \verb|state| retourné sera incrémenté.
 \\
 
@@ -116,7 +114,7 @@ par héritage:
 La tâche courante \verb|current| peut elle aussi bloquer plusieurs tâches sur plusieurs verrous, ainsi il est important de ne pas
 simplement incrémenter de 1 le poids du futex sur lequel on va attendre, mais de la somme des poids
 des \verb|futex_state| que la tâche courante détient. Cette somme est calculée avec un simple parcourt sur la
-liste locale des \verb|futex_state| de la tâche:
+liste des \verb|futex_state| de la tâche:
 \begin{lstlisting}[tabsize=4]
 	get_futex_state_sumload(task);
 \end{lstlisting}
@@ -188,7 +186,7 @@ du verrou. La tâche qui sera le nouveau propriétaire le déclare avec la fonct
 	fixup_state_owner_current(state);
 \end{lstlisting}
 Cette fonction va notamment modifier le \verb|owner| de \verb|state|, décrémenter son poids, ajouter 
-le \verb|state| à sa liste locale, et ainsi pouvoir appliquer sa priorité basé sur ces changements avec
+le \verb|state| à sa liste, et ainsi pouvoir appliquer sa priorité basé sur ces changements avec
 \verb|futex_state_prio(task)|. Le champs \verb|waiting_futex_state| de la tâche courante est marqué à \verb|NULL|
 pour indiquer celle-ci n'attend plus sur un futex. Voici le code de la fonction:
 
@@ -197,7 +195,7 @@ int fixup_state_owner_current(struct futex_state *state)
 {
 	int sumload = get_futex_state_sumload(current);
 	state->owner = current;
-	add_futex_state_local(state);
+	add_futex_state(state);
 
 	state->load -= (sumload + 1);	
 
@@ -217,18 +215,18 @@ que le nouveau propriétaire détient avant l'ajout du \verb|state|. En effet, e
 
 Lors du relâchement d'un verrou la tâche courante, le propriétaire, doit récupérer le \verb|futex_state| associé:
 \begin{lstlisting}[tabsize=4]
-	fetch_futex_state_local(current, key, &state);
+	fetch_futex_state(current, key, &state);
 \end{lstlisting}
-Si le \verb|state| existe alors il est retiré de la liste locale:
+Si le \verb|state| existe alors il est retiré de la liste:
 \begin{lstlisting}[tabsize=4]
-	del_futex_state_local(state);
+	del_futex_state(state);
 \end{lstlisting}
 Après ces changements la priorité de la tâche courante doit être mis à jour:
 \begin{lstlisting}[tabsize=4]
 	futex_state_prio(current);
 \end{lstlisting}
 
-Ainsi, si la tâche relâche son dernier verrou alors sa liste locale devient vide et l'appel
+Ainsi, si la tâche relâche son dernier verrou alors sa liste devient vide et l'appel
 à \verb|futex_state_prio(task)| annulera les modifications de priorité apportées.
 
 \subsubsection{Mort subite}

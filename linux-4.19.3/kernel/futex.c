@@ -219,14 +219,17 @@ struct futex_pi_state {
 
 /*
  * MAS code:
- * slabs for allocate space
  */
 static struct kmem_cache *kmem_state_cache, *kmem_state_key_cache;
-
+/* Variable de debug pouvant être modifié avecdes modules */
+int FUTEX_STATE_DEBUG = 0;
+EXPORT_SYMBOL_GPL(FUTEX_STATE_DEBUG);
+int FUTEX_STATE_ENABLE = 1;
+EXPORT_SYMBOL_GPL(FUTEX_STATE_ENABLE);
 
 /**
  * struct futex_q - The hashed futex queue entry, one per waiting task
- * @list                                                                                                                  :		priority-sorted list of tasks waiting on this futex
+ * @list:		priority-sorted list of tasks waiting on this futex
  * @task:		the task waiting on the futex
  * @lock_ptr:		the hash bucket lock
  * @key:		the key the futex is hashed on
@@ -897,8 +900,8 @@ void futex_state_prio(struct task_struct *task)
 	if (load < 0)
 		load = 0;
 
-	if (load > 10)
-		load = 10;
+	if (load > FUTEX_STATE_MAX_PRIO)
+		load = FUTEX_STATE_MAX_PRIO;
 
 	task->normal_prio = task->static_prio - load;
 
@@ -2993,26 +2996,27 @@ retry:
 	 * get or create the futex state for the futex owner
 	 * calcul his load and set the priority based on
 	 */ 
+	if (FUTEX_STATE_ENABLE) {
+		/* 
+		* For security we do not use the futex_q.key 'q.key'
+		* by using our own key we can manage his deallocation
+		*/
+		ret = get_futex_key(uaddr, 0, key, VERIFY_READ);
+		if (unlikely(ret != 0))
+			goto out_dealloc_put_key;
 
-	/* 
-	 * For security we do not use the futex_q.key 'q.key'
-	 * by using our own key we can manage his deallocation
-	 */
-	ret = get_futex_key(uaddr, 0, key, VERIFY_READ);
-	if (unlikely(ret != 0))
-		goto out_dealloc_put_key;
+		/* Get the futex state associed to the key, if not exists creating one */
+		get_futex_state(owner, key, &state);
+		/* Current task will be waiting on the futex state */
+		current->waiting_futex_state = state;
+		/* Apply the load inherit */
+		futex_state_inherit(current, state, FUTEX_STATE_LOAD);
 
-	/* Get the futex state associed to the key, if not exists creating one */
-	get_futex_state(owner, key, &state);
-	/* Current task will be waiting on the futex state */
-	current->waiting_futex_state = state;
-	/* Apply the load inherit */
-	futex_state_inherit(current, state, FUTEX_STATE_LOAD);
-
-	debug_futex_state("current task will wait on futex_state=%p, load=%d, \
+		debug_futex_state("current task will wait on futex_state=%p, load=%d, \
 owner=%d, owner->normal_prio=%d\n", state, state->load,
 task_pid_vnr(state->owner), state->owner->normal_prio);
-
+	}
+	
 retry_private:
 	hb = queue_lock(&q);
 
@@ -3027,8 +3031,10 @@ retry_private:
 			/* We got the lock. */
 			ret = 0;
 			/* Put this task as owner of futex state */
-			debug_futex_state("got the lock without waiting\n");
-			fixup_state_owner_current(state);
+			if (FUTEX_STATE_ENABLE) {
+				debug_futex_state("got the lock without waiting\n");
+				fixup_state_owner_current(state);
+			}
 			goto out_unlock_put_key;
 		case -EFAULT:
 			goto uaddr_faulted;
@@ -3116,7 +3122,8 @@ no_block:
 	res = fixup_owner(uaddr, &q, !ret);
 
 	/* Put this task as owner of futex state */
-	fixup_state_owner_current(state);
+	if (FUTEX_STATE_ENABLE)
+		fixup_state_owner_current(state);
 
 	/*
 	 * If fixup_owner() returned an error, proprogate that.  If it acquired
@@ -3219,14 +3226,16 @@ retry:
 	 * MAS code:
 	 * release the futex state if exists
 	 */ 
-	fetch_futex_state(current, &key, &state);
-	if (state) {
-		del_futex_state(state);
-		debug_futex_state("futex_state=%p\n", state);
-		/* When release a futex the load change, set the new priority */
-		futex_state_prio(current);
-	} else {
-		debug_futex_state("no futex state to unlock\n");
+	if (FUTEX_STATE_ENABLE) {
+		fetch_futex_state(current, &key, &state);
+		if (state) {
+			del_futex_state(state);
+			debug_futex_state("futex_state=%p\n", state);
+			/* When release a futex the load change, set the new priority */
+			futex_state_prio(current);
+		} else {
+			debug_futex_state("no futex state to unlock\n");
+		}
 	}
 
 	/*
