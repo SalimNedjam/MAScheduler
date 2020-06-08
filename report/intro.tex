@@ -12,7 +12,6 @@ C'est l'ordonnanceur, scheduler en anglais, qui s'occupe de cette tâche
 critique. Il a pour but premier de rendre le multitasking le plus efficace
 possible en utilisant le moins de ressources et en respectant les trois principes
 clés qui sont: Safety, Liveness et Fairness.
-\\
 
 L'exécution parallèle des tâches sur le processeur implique parfois à celles-ci
 de se synchroniser, cela peut se faire grâce aux verrous. Un verrou est une
@@ -26,13 +25,10 @@ d'avancer il est important de le faire passer en priorité dans les
 élections. Ainsi, en favorisant le processus propriétaire du verrou, ce dernier 
 pourra arriver plus rapidement au point de libération de la ressource, et ainsi 
 débloquer les autres processus en attente.
-\\
 
 Les objectifs de notre projet ont donc été les suivants: optimiser les
 décisions de l'ordonnanceur pour apporter une élection plus favorable aux
 processus détenant un verrou.
-\\
-
 
 Nous verrons tout d'abord dans ce rapport les différents aspects de la glibc
 qui permettent de gérer la synchronisation des tâches. Ensuite, nous aborderons

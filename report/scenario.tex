@@ -41,7 +41,6 @@ Pour reprendre le scénario du monoprocesseur nous pouvons envisager de favorise
 en augmentant sa priorité. Cette augmentation ne doit cependant pas être un inconvénient pour B,
 plus prioritaire. Une augmentation d'une valeur de 10 est un bon compromis. La tâche A
 devient alors plus prioritaire que C sans dépasser B.
-\\
 
 Cependant, si C détient lui aussi un verrou, et que A et C bloquent respectivement 
 10 et 100 tâches, alors augmenter la priorité de 10 au deux tâches semble non équitable
@@ -49,7 +48,6 @@ Cependant, si C détient lui aussi un verrou, et que A et C bloquent respectivem
 intervalle de 0 à 10 est plus cohérent. La tâche A aura une priorité augmentée
 de 2 contre 10 pour C. Cette augmentation de priorité sera déterminé
 avec un système de \textbf{charge}.
-\\
 
 Une autre solution aurait pu être de modifier directement la valeur \verb|vruntime|
 pour forcer la tâche à être à gauche de l'arbre \verb|rbtree| et ainsi assurer sa
@@ -62,14 +60,11 @@ de priorité mis en place par le scheduler et donc n'a pas été retenue.
 
 Chaque tâche propriétaire d'un verrou se verra attribuer une charge, celle-ci évoluera en fonction
 des tâches bloquées sur le verrou. Plus une tâche a une charge élevée, plus sa priorité augmente.
-\\
 
 L'implémentation du calcul de charge est assez simple. 
 La charge correspondra au nombre total de tâches couramment bloquées sur le verrou. 
 Ainsi, la priorité ajoutée sera dans l'intervalle de 0 à 10: une tâche bloquée augmentera
 la priorité de 1, bornant l'augmentation à 10 tâches bloquées.
-\\
-
 
 
 \subsubsection{Héritage de charge}
@@ -84,7 +79,6 @@ de 1 la charge de A et de B.
 
 Dans le même principe, si C meurt avant d'avoir récupéré le verrou, alors un deshéritage est
 appliqué: A et B voient leur charge décrémenter de 1.
-\\
 
 L'héritage de charge est très utile mais demande aussi d'être très précis.
 En effet, si la charge d'une tâche est incorrecte par rapport à la réalité

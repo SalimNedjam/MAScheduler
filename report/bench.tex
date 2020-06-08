@@ -2,31 +2,25 @@
 
 Pour évaluer notre implémentation nous avons réalisé un petit benchmark qui se charge de simuler un
 scénario basique.
-\\
 
 \noindent \textbf{Scénario:}
 Un thread parent prend un mutex et lance l'exécution de 20 threads enfant se bloquant sur son mutex.
 Une fois les enfants lancés, le parent exécute son calcul.
 10 autres threads s'exécutent en parallèle du thread parent et effectue leur calcul.
 Le programme s'arrête brutalement quand le parent a fini l'exécution de son calcul.
-\\
 
 \noindent \textbf{Calcul des threads:} 
 Calcul du déterminent d'une matrice 11x11.
-\\
 
 \noindent \textbf{Résultat attendu:}
 Les 20 threads enfant doivent augmenter la priorité du thread parent de 20,
 jouant donc comme un nice -20. Le thread parent doit donc voir son temps d'exécution significativement
 réduit et finir avant les threads parallèles.
-\\
 
 \noindent \textbf{Environnement de test:}
 Machine virtuelle avec 1 cœur.
-\\
 
 \noindent \textbf{Résultat:}
-\\
 Temps d'exécution \textbf{sans} notre implémentation des futex state:
 \begin{lstlisting}
 real	0m43.359s
@@ -34,7 +28,6 @@ user	0m43.326s
 sys	0m0.011s
 \end{lstlisting}
 Le thread parent ne fini pas avant les threads parallèles.
-\\
 
 \noindent Temps d'exécution \textbf{avec} notre implémentation des futex state:
 \begin{lstlisting}
@@ -43,7 +36,6 @@ user	0m4.396s
 sys	0m0.003s
 \end{lstlisting}
 Le thread parent fini bien avant les threads parallèles.
-\\
 
 Par manque de temps nous n'avons pas pu évaluer notre implémentation sur des scénarios plus complexes,
 notamment en jouant avec le multicœur. 

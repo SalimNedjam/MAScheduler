@@ -101,7 +101,6 @@ dans la liste du \verb|owner|,
 si la structure n'existe pas alors elle sera allouée, initialisée et ajoutée à la liste du \verb|owner|,
 sinon elle sera retournée.
 Dans les deux cas le compteur de référence du \verb|state| retourné sera incrémenté.
-\\
 
 Pour indiquer que la tâche courante va s'endormir en attendant sur le futex, on passe la structure
 du \verb|futex_state| précédemment récupérée à la \verb|task_struct|:
