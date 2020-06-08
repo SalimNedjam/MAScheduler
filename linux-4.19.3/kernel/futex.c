@@ -903,7 +903,8 @@ void futex_state_prio(struct task_struct *task)
 	if (load > FUTEX_STATE_MAX_PRIO)
 		load = FUTEX_STATE_MAX_PRIO;
 
-	task->normal_prio = task->static_prio - load;
+	task->futex_state_prio = load;
+	set_static_prio(task);
 
 	debug_futex_state("task=%d, load=%d, static_prio=%d, normal_prio=%d\n",
 		task_pid_vnr(task), load, task->static_prio, task->normal_prio);

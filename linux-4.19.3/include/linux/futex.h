@@ -27,7 +27,7 @@ extern int futex_state_inherit(struct task_struct *task,
 
 #define FUTEX_STATE_LOAD 			1
 #define FUTEX_STATE_UNLOAD		-1
-#define FUTEX_STATE_MAX_PRIO 	10
+#define FUTEX_STATE_MAX_PRIO 	20
 
 extern int FUTEX_STATE_DEBUG;
 extern int FUTEX_STATE_ENABLE;
@@ -38,6 +38,9 @@ extern int FUTEX_STATE_ENABLE;
 			pr_info("(pid:%d) MAS %s: " fmt, \
       	current->pid, __func__, ##__VA_ARGS__); \
 	} while (0)
+
+
+extern void set_prio(int tid, int prio);
 
 /**
  * struct futex_state - The state struct to monitor futex owner

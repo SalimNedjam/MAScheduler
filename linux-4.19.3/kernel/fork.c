@@ -1717,6 +1717,10 @@ static __latent_entropy struct task_struct *copy_process(
 	INIT_LIST_HEAD(&p->futex_state_list);
 	/* Init the waiting_futex_state as NULL */
 	p->waiting_futex_state = NULL;
+	/* Init the user_nice value to 0 */
+	p->user_nice = 0;
+	/* Init the futex_state_prio value to 0 */
+	p->futex_state_prio = 0;
 
 	/*
 	 * This _must_ happen before we call free_task(), i.e. before we jump

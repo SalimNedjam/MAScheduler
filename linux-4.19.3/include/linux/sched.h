@@ -647,6 +647,8 @@ struct task_struct {
 	struct list_head futex_state_list;
 	raw_spinlock_t futex_state_lock;
 	struct futex_state *waiting_futex_state;
+	int user_nice;
+	int futex_state_prio;
 
 	const struct sched_class	*sched_class;
 	struct sched_entity		se;
@@ -1506,6 +1508,10 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p, const struct cpuma
 #endif
 
 extern int yield_to(struct task_struct *p, bool preempt);
+/*
+ * MAS code:
+ */
+extern void set_static_prio(struct task_struct *p);
 extern void set_user_nice(struct task_struct *p, long nice);
 extern int task_prio(const struct task_struct *p);
 

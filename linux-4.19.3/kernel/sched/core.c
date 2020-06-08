@@ -3863,15 +3863,23 @@ static inline int rt_effective_prio(struct task_struct *p, int prio)
 }
 #endif
 
-void set_user_nice(struct task_struct *p, long nice)
+/*
+ * MAS code:
+ * Applique la priorité d'une tâche en prenant en compte
+ * le nice utilisateur et la priorité du futex_state
+ */
+void set_static_prio(struct task_struct *p)
 {
 	bool queued, running;
-	int old_prio, delta;
+	int old_prio, delta, prio;
 	struct rq_flags rf;
 	struct rq *rq;
+	
+	prio = NICE_TO_PRIO(p->user_nice) - p->futex_state_prio;
 
-	if (task_nice(p) == nice || nice < MIN_NICE || nice > MAX_NICE)
-		return;
+	if (prio < 0)
+		prio = 0;
+
 	/*
 	 * We have to be careful, if called from sys_setpriority(),
 	 * the task might be in the middle of scheduling on another CPU.
@@ -3886,7 +3894,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	 * SCHED_DEADLINE, SCHED_FIFO or SCHED_RR:
 	 */
 	if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
-		p->static_prio = NICE_TO_PRIO(nice);
+		p->static_prio = prio;
 		goto out_unlock;
 	}
 	queued = task_on_rq_queued(p);
@@ -3896,7 +3904,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	if (running)
 		put_prev_task(rq, p);
 
-	p->static_prio = NICE_TO_PRIO(nice);
+	p->static_prio = prio;
 	set_load_weight(p, true);
 	old_prio = p->prio;
 	p->prio = effective_prio(p);
@@ -3915,6 +3923,15 @@ void set_user_nice(struct task_struct *p, long nice)
 		set_curr_task(rq, p);
 out_unlock:
 	task_rq_unlock(rq, p, &rf);
+}
+
+void set_user_nice(struct task_struct *p, long nice)
+{
+	if (task_nice(p) == nice || nice < MIN_NICE || nice > MAX_NICE)
+		return;
+	
+	p->user_nice = nice;
+	set_static_prio(p);
 }
 EXPORT_SYMBOL(set_user_nice);
 

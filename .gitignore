@@ -59,6 +59,8 @@ my_initramfs.cpio.gz
 pnl-tp.img
 qemu-run-externKernel-virtfs.sh
 share
+.vscode
+
 
 # Latex compilation files
 

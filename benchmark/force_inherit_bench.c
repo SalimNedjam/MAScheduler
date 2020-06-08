@@ -1,26 +1,94 @@
-#include<stdio.h>
-#include<string.h>
-#include<pthread.h>
-#include<stdlib.h>
-#include<unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <time.h>
 
-#define NB_CHILDS 30
-#define NB_OTHERS 100
+#define NB_CHILDS 20
+#define NB_OTHERS 10
+#define N 			11
 
 pthread_t childs[NB_CHILDS];
 pthread_t others[NB_OTHERS];
 pthread_mutex_t lock;
 
+
+// Function to get cofactor of mat[p][q] in temp[][]. n is current 
+// dimension of mat[][] 
+void getCofactor(int mat[N][N], int temp[N][N], int p, int q, int n) 
+{ 
+    int i = 0, j = 0; 
+  
+    // Looping for each element of the matrix 
+    for (int row = 0; row < n; row++) 
+    { 
+        for (int col = 0; col < n; col++) 
+        { 
+            //  Copying into temporary matrix only those element 
+            //  which are not in given row and column 
+            if (row != p && col != q) 
+            { 
+                temp[i][j++] = mat[row][col]; 
+  
+                // Row is filled, so increase row index and 
+                // reset col index 
+                if (j == n - 1) 
+                { 
+                    j = 0; 
+                    i++; 
+                } 
+            } 
+        } 
+    } 
+} 
+  
+/* Recursive function for finding determinant of matrix. 
+   n is current dimension of mat[][]. */
+int determinantOfMatrix(int mat[N][N], int n) 
+{ 
+    int D = 0; // Initialize result 
+  
+    //  Base case : if matrix contains single element 
+    if (n == 1) 
+        return mat[0][0]; 
+  
+    int temp[N][N]; // To store cofactors 
+  
+    int sign = 1;  // To store sign multiplier 
+  
+     // Iterate for each element of first row 
+    for (int f = 0; f < n; f++) 
+    { 
+        // Getting Cofactor of mat[0][f] 
+        getCofactor(mat, temp, 0, f, n); 
+        D += sign * mat[0][f] * determinantOfMatrix(temp, n - 1); 
+  
+        // terms are to be added with alternate sign 
+        sign = -sign; 
+    } 
+  
+    return D; 
+} 
+
+int job()
+{
+	srand(time(NULL));
+	int mat[N][N];
+	int i, j;
+	for (i = 0; i < N; i++) {
+		for (j = 0; j < N; j++) {
+			mat[i][j] = rand() % 100;
+		}
+	}	
+	return determinantOfMatrix(mat, N);
+}
+
 void *child_job(void *arg)
 {
 	pthread_mutex_lock(&lock);
-
-	//printf("child\n");
-
-	for (size_t i = 0; i < 10000; i++)
-		syscall(SYS_gettid);
 
 	pthread_mutex_unlock(&lock);
 
@@ -43,16 +111,11 @@ void *parent_job(void *arg)
 		i++;
 	}
 
-	//printf("parent start\n");
+	printf("parent %d\n", job());
 
-	for (size_t i = 0; i < 10000 * 100; i++)
-		syscall(SYS_gettid);
-
-	//printf("parent end\n");
 	exit(0);
 
 	pthread_mutex_unlock(&lock);
-
 
 	for (i = 0; i < NB_CHILDS; i++)
 		pthread_join(childs[i], NULL);
@@ -62,12 +125,7 @@ void *parent_job(void *arg)
 
 void *other_job(void *arg)
 {	
-	//printf("other start\n");
-
-	for (size_t i = 0; i < 10000 * 100; i++)
-		syscall(SYS_gettid);
-
-	//printf("other end\n");
+	printf("other %d\n", job());
 
 	return NULL;
 }
@@ -85,12 +143,12 @@ void bench(const pthread_mutexattr_t *attr)
 	pthread_attr_init(&attr_thread);
 
 
-	while (i < NB_OTHERS) {
+	 while (i < NB_OTHERS) {
 		err = pthread_create(&(others[i]), &attr_thread, &other_job, NULL);
 		if (err != 0)
 			printf("\ncan't create thread :[%s]", strerror(err));
 		i++;
-	}
+	} 
 
 	pthread_t *parent = (pthread_t*) malloc(sizeof(pthread_t));
 	err = pthread_create(parent, &attr_thread, &parent_job, NULL);

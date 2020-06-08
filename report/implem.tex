@@ -51,6 +51,8 @@ struct task_struct {
 	struct list_head futex_state_list;
 	raw_spinlock_t futex_state_lock;
 	struct futex_state *waiting_futex_state;
+	int user_nice;
+	int futex_state_prio;
 	...
 }
 \end{lstlisting}
@@ -64,6 +66,11 @@ Les champs ajoutés sont les suivants:
 	
 	\item \verb|waiting_futex_state| est un pointeur vers le \verb|futex_state| sur lequel
 	la tâche attend.
+	
+	\item \verb|user_nice| est le valeur courante du nice utilisateur appliquée à la tâche.
+	
+	\item \verb|futex_state_prio| est l'augmentation de priorité appliquée à la tâche en fonction
+	des autres tâches qu'elles bloquent.
 \end{itemize}
 
 \subsection{Fonctionnement}
@@ -160,23 +167,72 @@ int futex_state_inherit(struct task_struct *task,
 \subsubsection{Application de la priorité}
 
 La fonction \verb|futex_state_prio(task)| permet de définir la priorité d'une tâche en se
-basant sur son poids. L'implémentation finale est très simple et peut être la cible
-d'amélioration.
+basant sur son \verb|sumload|. L'implémentation finale est très simple et peut être la cible
+d'amélioration. 
 \begin{lstlisting}[tabsize=4]
 void futex_state_prio(struct task_struct *task)
 {
 	int load = get_futex_state_sumload(task);
+	
 	if (load < 0)
 		load = 0;
 	
-	if (load > 10)
-		load = 10;
+	if (load > FUTEX_STATE_MAX_PRIO)
+		load = FUTEX_STATE_MAX_PRIO;
 	
-	task->normal_prio = task->static_prio - load;
+	task->futex_state_prio = load;
+	set_static_prio(task);
 }
 \end{lstlisting}
 
-La priorité de la tâche est augmentée du nombre de tâche qu'elle bloque, borné sur 10.
+L'augmentation attribuée à la tâche correspond au nombre de tâche qu'elle bloque, borné sur 
+\verb|FUTEX_STATE_MAX_PRIO| valant 20.
+
+La fonction \verb|set_static_prio(task)| est ensuite appelé.
+Cette fonction se situe dans \verb|<kernel/sched/core.c>| et permet de modifier la priorité
+statique d'une tâche en combinant le nice utilisateur (\verb|user_nice|) et l'augmentation
+de priorité lié au futex state (\verb|futex_state_prio|).
+Voici son code simplifié:
+
+\begin{lstlisting}[tabsize=4]
+void set_static_prio(struct task_struct *p)
+{
+	int prio;
+	
+	prio = NICE_TO_PRIO(p->user_nice) - p->futex_state_prio;
+	
+	...
+	
+	p->static_prio = prio;
+	set_load_weight(p, true);
+	old_prio = p->prio;
+	p->prio = effective_prio(p);
+	
+	...
+}
+\end{lstlisting}
+
+La fonction appelée lors de la modification du nice par l'utilisateur a aussi
+subi des changements:
+\begin{lstlisting}[tabsize=4]
+void set_user_nice(struct task_struct *p, long nice)
+{
+	if (task_nice(p) == nice || nice < MIN_NICE 
+		|| nice > MAX_NICE)
+	return;
+	
+	p->user_nice = nice;
+	set_static_prio(p);
+}
+\end{lstlisting} 
+
+Ce mécanisme de changement de priorité permet de faire cohabiter le nice utilisateur
+et l'augmentation de priorité des \verb|futex_state|.
+Quand l'une des deux valeurs change l'autre est toujours prise en compte.
+On peut donc voir la variable \verb|futex_state_prio| comme un offset qui décale la priorité de base
+(\verb|DEFAULT_PRIO| = 120) sur lequel le nice base son calcul.
+
+
 
 \subsubsection{Changement de propriétaire}
 
@@ -187,8 +243,8 @@ du verrou. La tâche qui sera le nouveau propriétaire le déclare avec la fonct
 \end{lstlisting}
 Cette fonction va notamment modifier le \verb|owner| de \verb|state|, décrémenter son poids, ajouter 
 le \verb|state| à sa liste, et ainsi pouvoir appliquer sa priorité basé sur ces changements avec
-\verb|futex_state_prio(task)|. Le champs \verb|waiting_futex_state| de la tâche courante est marqué à \verb|NULL|
-pour indiquer celle-ci n'attend plus sur un futex. Voici le code de la fonction:
+\verb|futex_state_prio(task)|. Le champs \newline \verb|waiting_futex_state| de la tâche courante est marqué à \verb|NULL|
+pour indiquer que celle-ci n'attend plus sur un futex. Voici le code de la fonction:
 
 \begin{lstlisting}[tabsize=4]
 int fixup_state_owner_current(struct futex_state *state)
