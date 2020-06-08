@@ -3,12 +3,10 @@
 Nous concluons ce projet par un bilan sur sa réalisation et ses résultats ainsi qu'une discussion sur 
 ses limites et les améliorations envisageables.
 
-\subsection{Réalisation du projet et limite}
+\subsection{Conclusion et limite}
 
 La réalisation du projet s'est bien déroulé, toutes les fonctionnalités attendues on été
-implémentées.
-Les résultats sur l'évaluation de notre mécanisme sont globalement concluant, bien que 
-par manque de temps nous aurions préféré affiner nos benchmarks.
+implémentées, on a pu conclure que dans certains cas de forte contention l'approche du CFS à ces limite car il ne prends pas en compte les thread en attente d'entrée en section critique, Les résultats qu'on a pu tirer de notre mécanisme sont globalement concluant contenu des metrics que l'on s'est fixés au départ.
 
 Cependant le projet a montré des limites, notamment sur la manipulation de la liste \verb|futex_state_list| d'une tâche.
 Son utilisation requière la prise du verrou \verb|futex_state_lock|.
