@@ -15,6 +15,8 @@ pthread_t childs[100];
 pthread_t others[100];
 pthread_mutex_t lock;
 
+int cpt = 0;
+
 
 // Function to get cofactor of mat[p][q] in temp[][]. n is current 
 // dimension of mat[][] 
@@ -88,6 +90,8 @@ int job()
 
 void *child_job(void *arg)
 {
+	cpt++;
+	//printf("child %d/%d\n", cpt, NB_CHILDS);
 	pthread_mutex_lock(&lock);
 
 	pthread_mutex_unlock(&lock);
@@ -112,6 +116,7 @@ void *parent_job(void *arg)
 	}
 
 	job();
+
 
 	exit(0);
 
