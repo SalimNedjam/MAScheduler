@@ -7,12 +7,12 @@
 #include <sys/syscall.h>
 #include <time.h>
 
-#define NB_CHILDS 20
-#define NB_OTHERS 10
+int NB_CHILDS;
+int NB_OTHERS;
 #define N 			11
 
-pthread_t childs[NB_CHILDS];
-pthread_t others[NB_OTHERS];
+pthread_t childs[100];
+pthread_t others[100];
 pthread_mutex_t lock;
 
 
@@ -111,7 +111,7 @@ void *parent_job(void *arg)
 		i++;
 	}
 
-	printf("parent %d\n", job());
+	job();
 
 	exit(0);
 
@@ -125,7 +125,7 @@ void *parent_job(void *arg)
 
 void *other_job(void *arg)
 {	
-	printf("other %d\n", job());
+	job();
 
 	return NULL;
 }
@@ -163,6 +163,8 @@ void bench(const pthread_mutexattr_t *attr)
 int main(int argc, const char **argv)
 {
 	pthread_mutexattr_t attr;
+	NB_CHILDS =  atoi(argv[1]);
+	NB_OTHERS =  atoi(argv[2]);
 
 	if (pthread_mutexattr_init(&attr) == -1) {
 		perror("mutexattr_init error");
