@@ -1,6 +1,31 @@
 \section{Discussion}
 
+Nous concluons ce projet par un bilan sur sa réalisation et ses résultats ainsi qu'une discussion sur 
+ses limites et les améliorations envisageables.
+
+\subsection{Réalisation du projet et limite}
+
+La réalisation du projet s'est bien déroulé, toutes les fonctionnalités attendues on été
+implémentées.
+Les résultats sur l'évaluation de notre mécanisme sont globalement concluant, bien que 
+par manque de temps nous aurions préféré affiner nos benchmarks.
+
+Cependant le projet a montré des limites, notamment sur la manipulation de la liste \verb|futex_state_list| d'une tâche.
+Son utilisation requière la prise du verrou \verb|futex_state_lock|.
+Ainsi, lors de la recherche, d'un ajout ou d'une suppression d'un \verb|futex_state|
+sur la liste mais aussi lors du calcul de la somme, le verrou est pris. Cela empêche d'autres tâches bloquées
+sur la même tâche propriétaire d'y accéder. Créant ainsi des groupes de tâches à cette prise de
+verrou commun. Il y a donc un risque de contention entre ces tâches.
+
+Dans les premières implémentations nous avions créé un liste globale, recensant l'ensemble des \verb|futex_state| quelque soit
+leur propriétaire. Sa manipulation était donc commune à toutes les tâches, en plus du manque de performance de 
+cette méthode, le problème de contention était d'autant plus présent. L'utilisation des listes, dites locales, à chaque
+propriétaire permet de réduire ce problème de contention. Cependant le risque persiste et aucune solution 
+viable nous semble contourner ce problème pour le moment.
+
 \subsection{Travaux à court terme}
+Par manque de temps certaines tâches n'ont pas pu être réalisées dans le temps imparti.
+Leur implémentation n'ont pas d'impact majeur et elles ont donc été laissé pour les travaux à court terme.
 
 \subsubsection{Poids}
 La clé de voûte de notre implémentation est son système de poids.
@@ -21,9 +46,7 @@ de tester notre implémentation volontairement avec des programmes tests en util
 des mutex PI. En effet, en implémentant le mécanisme, en cours de développement,
  pour le type ROBUST le kernel l'aurait utilisé, ce qui aurait compliqué le débogage lors d'éventuelles erreurs.
 
-\subsection{Travaux à long terme}
-
-\subsubsection{Priorité}
+\subsection{Travaux à long terme: les priorités}
 L'implémentation actuelle du changement de priorité d'une tâche par la fonction \verb|futex_state_prio(task)| 
 est très simpliste. Elle réside en une réduction de la \verb|static_prio| par le \verb|sumload| 
 borné sur 20.
@@ -42,19 +65,3 @@ le même nombre de tâches auront un \verb|sumload| différent en fonction des p
 Cette nouvelle approche complexifie le mécanisme, notamment si une tâche bloquée voit sa priorité modifiée
 lorsqu'elle dort, son coefficient devra être mis à jour en conséquent.
 
-
-
-\subsection{Limite}
-
-\subsubsection{Contention}
-La manipulation de la liste \verb|futex_state_list| d'une tâche requière l'utilisation de son verrou
-\verb|futex_state_lock|. Ainsi, lors de la recherche, d'un ajout ou d'une suppression d'un \verb|futex_state|
-sur la liste mais aussi lors du calcul de la somme, le verrou est pris. Cela empêche d'autres tâches bloquées
-sur la même tâche propriétaire d'y accéder. Créant ainsi des groupes de tâches à cette prise de
-verrou commun. Il y a donc un risque de contention entre ces tâches.
-
-Dans les premières implémentations nous avions créé un liste globale, recensant l'ensemble des \verb|futex_state| quelque soit
-leur propriétaire. Sa manipulation était donc commune à toutes les tâches, en plus du manque de performance de 
-cette méthode, le problème de contention était d'autant plus présent. L'utilisation des listes, dites locales, à chaque
-propriétaire permet de réduire ce problème de contention. Cependant le risque persiste et aucune solution 
-viable nous semble contourner ce problème pour le moment.

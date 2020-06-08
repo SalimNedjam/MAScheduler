@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for i in `seq 0 10 100`
+do
+	echo "Test for $i load"
+	time ./force_inherit_bench ${i} $1
+	sleep 1
+done

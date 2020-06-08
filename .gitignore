@@ -64,8 +64,10 @@ share
 
 # Latex compilation files
 
+*.synctex.gz
+*.toc
 *.aux
 *.bbl
 *.blg
 *.log
-*.pdf
+

@@ -4,7 +4,6 @@
 La glibc est une librairie qui offre un panel de fonctionnalités. 
 Celle des verrous (mutex) nous intéresse particulièrement: elle permet 
 d'abstraire aux programmeurs l'utilisation complexe des verrous côté kernel.
-\\
 
 Il existe plusieurs types de mutex proposés à l'utilisateur, voici une liste non exhaustive:
 \begin{enumerate}
@@ -31,7 +30,6 @@ Ces deux types insèrent le \textit{pid} du propriétaire du verrou
 directement dans la valeur du verrou. Ainsi, lors des appels systèmes le kernel
 peut connaître le \textit{pid} du propriétaire du verrou avec une simple
 opération de flag sur la valeur passée.
-\\
 
 En tenant compte de ces éléments on peut donc en déduire que la modification 
 de la partie glibc n'est pas nécessaire. En effet, le \textit{pid} du 
