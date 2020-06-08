@@ -563,8 +563,6 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	rb_erase_cached(&se->run_node, &cfs_rq->tasks_timeline);
 }
 
-// $PICK
-
 struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 {
 	struct rb_node *left = rb_first_cached(&cfs_rq->tasks_timeline);
@@ -572,13 +570,7 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 	if (!left)
 		return NULL;
 
-	struct sched_entity *se = rb_entry(left, struct sched_entity, run_node);
-
-	struct task_struct *ts = container_of(se, struct task_struct, se);
-	
-	//pr_info("picked task : %d\n", ts->pid);
-
-	return se;
+	return rb_entry(left, struct sched_entity, run_node);
 }
 
 static struct sched_entity *__pick_next_entity(struct sched_entity *se)
