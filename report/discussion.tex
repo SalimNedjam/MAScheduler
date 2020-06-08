@@ -6,7 +6,8 @@ ses limites et les améliorations envisageables.
 \subsection{Conclusion et limite}
 
 La réalisation du projet s'est bien déroulé, toutes les fonctionnalités attendues on été
-implémentées, on a pu conclure que dans certains cas de forte contention l'approche du CFS à ces limite car il ne prends pas en compte les thread en attente d'entrée en section critique, Les résultats qu'on a pu tirer de notre mécanisme sont globalement concluant contenu des metrics que l'on s'est fixés au départ.
+implémentées. Nous avons vu les limites du CFS, notamment lors de forte contention, et nous avons réussi à mettre en 
+œuvre une solution simple mais fiable pour résoudre cette faiblesse. Les résultats qu'on a pu tirer de notre mécanisme sont globalement concluant contenu des objectifs que l'on s'est fixés au départ.
 
 Cependant le projet a montré des limites, notamment sur la manipulation de la liste \verb|futex_state_list| d'une tâche.
 Son utilisation requière la prise du verrou \verb|futex_state_lock|.
