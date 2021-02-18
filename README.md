@@ -55,7 +55,7 @@ Les champs sont les suivants:
 
 -**list** permet de créer un chaînage entre les futex d'un même propriétaire.
 
--**item ** est une référence sur la **task_struct** du propriétaire du futex.
+-**item** est une référence sur la **task_struct** du propriétaire du futex.
 
 -**spin_lock** permet d'éviter les accès concurrents lors de la manipulation de	la structure.
 
