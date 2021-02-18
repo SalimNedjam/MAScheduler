@@ -46,53 +46,45 @@ L'ensemble de nos modifications dans le kernel on été préfixés par un commen
 Nous avons ajouté une structure **futex_state** qui représente l'état d'un
 futex:
 
-```
-struct futex_state {
-	struct list_head list;
-	struct task_struct *owner;
-	raw_spinlock_t spin_lock;
-	struct kref refcount;
-	int load;
-	union futex_key *key;
-};
-```
+<p align="center">
+	<img src="futex_state.png" alt="Image" />
+</p>
+
 
 Les champs sont les suivants:
 
 -**list** permet de créer un chaînage entre les futex d'un même propriétaire.
+
 -**item ** est une référence sur la **task_struct** du propriétaire du futex.
+
 -**spin_lock** permet d'éviter les accès concurrents lors de la manipulation de	la structure.
+
 -**kref** est un compteur de référence pour protéger la suppression des structures, et ainsi éviter de libérer la structure utilisée ailleurs.
+
 -**load** est le poids associé au futex.
+
 -**key** est la clé du futex, permettant d'identifier la structure pour un futex donné.
 
 
 Une modification sur la structure **task_struct** a été nécessaire:
 
-```
-struct task_struct {
-	...
-	struct list_head futex_state_list;
-	raw_spinlock_t futex_state_lock;
-	struct futex_state *waiting_futex_state;
-	int user_nice;
-	int futex_state_prio;
-	...
-}
-```
+
 Les champs ajoutés sont les suivants:
-  -**futex_state_list** est l'ensemble des
-	-**futex_state** que la tâche détient et sur lesquels d'autres tâches attendent.
-	-**futex_state_lock** est un verrou pour la manipulation de la liste.
-	-**waiting_futex_state** est un pointeur vers le **futex_state** sur lequel la tâche attend.
-	-**user_nice** est le valeur courante du nice utilisateur appliquée à la tâche.
-	-**futex_state_prio** est l'augmentation de priorité appliquée à la tâche en fonction
+
+-**futex_state_list** est l'ensemble des
+
+-**futex_state** que la tâche détient et sur lesquels d'autres tâches attendent.
+
+-**futex_state_lock** est un verrou pour la manipulation de la liste.
+
+-**waiting_futex_state** est un pointeur vers le **futex_state** sur lequel la tâche attend.
+
+-**user_nice** est le valeur courante du nice utilisateur appliquée à la tâche.
+
+-**futex_state_prio** est l'augmentation de priorité appliquée à la tâche en fonction
 	des autres tâches qu'elles bloquent.
 	
 	
-<p align="center">
-	<img src="futex_state.png" alt="Image" />
-</p>
 
 # Gestion des priorités
 <p align="center">
