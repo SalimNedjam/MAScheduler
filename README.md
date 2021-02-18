@@ -88,37 +88,32 @@ Les champs ajoutés sont les suivants:
 	-**user_nice** est le valeur courante du nice utilisateur appliquée à la tâche.
 	-**futex_state_prio** est l'augmentation de priorité appliquée à la tâche en fonction
 	des autres tâches qu'elles bloquent.
+	
+	
+<p align="center">
+	<img src="priorite.png" alt="Image" />
+</p>
+
+# Gestion des priorités
+<p align="center">
+	<img src="monolock.png" alt="Image" />
+</p>
+
 # Gain de performances
 Dans un premier temps nous avons mesuré le temps nécessaire au thread parent pour exécuter son calcul
 sans thread parallèle, qui serait concurrent, et sans enfant.
 Ce temps d'exécution est noté baseline est correspond à 1,8s.
 
-Nous avons fait évoluer le nombre de threads enfants de 0 à 50 avec 100 threads parallèles. 
-Les résultats présentés dans la Figure 2 nous montre que le temps d'exécution
-du thread parent tend vers la baseline quand sa priorité augmente dû aux threads enfants qu'il bloque.
-Ce qui est le résultat escompté. 
 
 <p align="center">
-	<img src="pic-selected-200617-1616-43.png" alt="Image"/>
+	<img src="monolock.png" alt="Image" />
 </p>
 
-La Figure 3 nous montre les résultats avec notre mécanisme. On remarque que le thread parent 
-reste proche de la baseline bien que le nombre de threads parallèle augmente. Les threads enfants bloqués permettent au
-thread parent, par le biais de notre mécanisme, d'être toujours plus prioritaire que les threads parallèle, quelque soit leur nombre.
-
-La Figure 4 nous montre les résultats sans notre mécanisme. Le thread parent voit son temps d'exécution
-croître quand le nombre de threads parallèle augmente, car sans la modification de priorité induite par les threads
-enfants bloqués, le thread parent n'est pas plus prioritaire que les threads parallèles.
 
 <p align="center">
-	<img src="pic-selected-200617-1617-12.png" alt="Image" />
+	<img src="multilock.png" alt="Image" />
 </p>
 
-La Figure 5 montre l'impact de l'overhead sur le temps d'exécution côté kernel. 
-La différence reste faible et minime face au gain de temps induit par le mécanisme.
-<p align="center">
-	<img src="pic-selected-200617-1617-21.png" alt="Image" />
-</p>
 
 
 
