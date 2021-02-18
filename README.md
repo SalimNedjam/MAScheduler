@@ -91,12 +91,12 @@ Les champs ajoutés sont les suivants:
 	
 	
 <p align="center">
-	<img src="priorite.png" alt="Image" />
+	<img src="futex_state.png" alt="Image" />
 </p>
 
 # Gestion des priorités
 <p align="center">
-	<img src="monolock.png" alt="Image" />
+	<img src="priorite.png" alt="Image" />
 </p>
 
 # Gain de performances
