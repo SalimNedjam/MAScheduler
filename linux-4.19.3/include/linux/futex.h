@@ -4,6 +4,8 @@
 
 #include <linux/ktime.h>
 #include <uapi/linux/futex.h>
+#include <linux/rtmutex.h>
+#include <linux/kref.h>
 
 struct inode;
 struct mm_struct;
@@ -11,6 +13,47 @@ struct task_struct;
 
 extern int
 handle_futex_death(u32 __user *uaddr, struct task_struct *curr, int pi);
+
+#define FUTEX_STATE_LOAD	1
+#define FUTEX_STATE_UNLOAD	-1
+#define FUTEX_STATE_MAX_PRIO	99
+
+#define debug_futex_state(fmt, ...) 				\
+  	do {							\
+		if (FUTEX_STATE_DEBUG) 				\
+			pr_info("(pid:%d) MAS %s: " fmt,	\
+      			current->pid, __func__, ##__VA_ARGS__); \
+	} while (0)
+
+extern void set_prio(int tid, int prio);
+extern void free_futex_state(struct kref *kref);
+extern int get_futex_state_sumload(struct task_struct *task);
+extern void futex_state_prio(struct task_struct *task);
+extern int futex_state_inherit(struct task_struct *task, 
+				struct futex_state *state,
+				int op);
+extern int FUTEX_STATE_DEBUG;
+extern int FUTEX_STATE_ENABLE;
+
+
+/**
+ * struct futex_state - The state struct to monitor futex owner
+ * @list: 	the list of the states                                                                                               :		priority-sorted list of tasks waiting on this futex
+ * @mutex: 	the lock of the state
+ * @owner: 	the the task_struct if the owner of the futex
+ * @refcount:	the kref counter
+ * @load: 	the futex load, represent the number of waiters on the futex		
+ * @key: 	the key the futex is hashed on
+ */
+struct futex_state {
+	struct list_head list;
+	struct task_struct *owner;
+	raw_spinlock_t spin_lock;
+	struct kref refcount;
+	int load;
+	union futex_key *key;
+} __randomize_layout;
+
 
 /*
  * Futexes are matched on equal values of this key.

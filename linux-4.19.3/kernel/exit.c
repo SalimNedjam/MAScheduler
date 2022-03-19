@@ -62,6 +62,7 @@
 #include <linux/random.h>
 #include <linux/rcuwait.h>
 #include <linux/compat.h>
+#include <linux/kref.h>
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
@@ -766,6 +767,23 @@ void __noreturn do_exit(long code)
 {
 	struct task_struct *tsk = current;
 	int group_dead;
+
+	/*
+	* if the current exiting task was waiting on a futex
+	* we have to decrement the load of the futex state
+	* and change the priority of the futex owner
+	* it's useless to delete all the futex state of the futext_state_list
+	* because memory will be released and futex state added to the new
+	* futex_state_list futex owner
+	*/
+	/* If the current exiting task was waiting on a futex */
+	if (FUTEX_STATE_ENABLE) {
+		if (tsk->waiting_futex_state != NULL) {
+			debug_futex_state("exit\n");
+			futex_state_inherit(tsk, tsk->waiting_futex_state, FUTEX_STATE_UNLOAD);
+			kref_put(&tsk->waiting_futex_state->refcount, free_futex_state);
+		}
+	}
 
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);

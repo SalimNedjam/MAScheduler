@@ -1708,6 +1708,18 @@ static __latent_entropy struct task_struct *copy_process(
 	if (!p)
 		goto fork_out;
 
+
+	/* Init the futex_state_lock */
+	raw_spin_lock_init(&p->futex_state_lock);
+	/* Init the futex_state_list */
+	INIT_LIST_HEAD(&p->futex_state_list);
+	/* Init the waiting_futex_state as NULL */
+	p->waiting_futex_state = NULL;
+	/* Init the user_nice value to 0 */
+	p->user_nice = 0;
+	/* Init the futex_state_prio value to 0 */
+	p->futex_state_prio = 0;
+
 	/*
 	 * This _must_ happen before we call free_task(), i.e. before we jump
 	 * to any of the bad_fork_* labels. This is to avoid freeing

@@ -67,6 +67,8 @@
 #include <linux/freezer.h>
 #include <linux/bootmem.h>
 #include <linux/fault-inject.h>
+#include <linux/kref.h>
+#include <linux/shrinker.h>
 
 #include <asm/futex.h>
 
@@ -213,6 +215,14 @@ struct futex_pi_state {
 
 	union futex_key key;
 } __randomize_layout;
+
+
+static struct kmem_cache *kmem_state_cache, *kmem_state_key_cache;
+/* Variable de debug pouvant être modifié avecdes modules */
+int FUTEX_STATE_DEBUG = 0;
+EXPORT_SYMBOL_GPL(FUTEX_STATE_DEBUG);
+int FUTEX_STATE_ENABLE = 1;
+EXPORT_SYMBOL_GPL(FUTEX_STATE_ENABLE);
 
 /**
  * struct futex_q - The hashed futex queue entry, one per waiting task
@@ -776,6 +786,224 @@ static int get_futex_value_locked(u32 *dest, u32 __user *from)
 	return ret ? -EFAULT : 0;
 }
 
+
+/*
+ * fetch_futex_state - Search in a state associated with the key is in the list
+ * @key:	Pointer to key
+ * @state_ret:	Pointer to return the stated found
+ *
+ * Put the adresse of the state if found, or NULL if not
+ */
+int fetch_futex_state(struct task_struct *task,
+			union futex_key *key, 
+			struct futex_state **state_ret)
+{
+	struct futex_state *state, *ret = NULL;
+
+	raw_spin_lock(&task->futex_state_lock);
+	list_for_each_entry(state, &task->futex_state_list, list) {
+		if (match_futex(key, state->key)) {
+			ret = state;
+			break;
+		}
+	}
+	raw_spin_unlock(&task->futex_state_lock);
+	*state_ret = ret;
+
+	return 0;
+}
+
+int get_futex_state_sumload(struct task_struct *task)
+{
+	struct futex_state *state;
+	int sumload = 0, nr = 0;
+
+	raw_spin_lock(&task->futex_state_lock);
+	list_for_each_entry(state, &task->futex_state_list, list) {
+		debug_futex_state("futex_state=%p, load=%d\n",state, state->load);
+		raw_spin_lock(&state->spin_lock);
+		sumload += state->load;
+		nr++;
+		raw_spin_unlock(&state->spin_lock);
+	}
+	debug_futex_state("task=%d have %d futex_state, sumload=%d\n", 
+		task_pid_vnr(task), nr, sumload);
+	raw_spin_unlock(&task->futex_state_lock);
+
+	return sumload;
+}
+
+int add_futex_state(struct futex_state *state)
+{
+	raw_spin_lock(&state->owner->futex_state_lock);
+	list_add(&state->list, &state->owner->futex_state_list);
+	debug_futex_state("add futex_state=%p to task=%d\n", state,
+		task_pid_vnr(state->owner));
+	raw_spin_unlock(&state->owner->futex_state_lock);
+
+	return 0;
+}
+
+int del_futex_state(struct futex_state *state)
+{
+	raw_spin_lock(&state->owner->futex_state_lock);
+	list_del(&state->list);
+	debug_futex_state("remove futex_state=%p to task=%d\n", state,
+		task_pid_vnr(state->owner));
+	raw_spin_unlock(&state->owner->futex_state_lock);
+
+	return 0;
+}
+
+/**
+ * free_futex_state - Free the space, passed as callback of kref_put
+ * @kref:	Pointer to the kref of the state
+
+ * Free the state allocated in the slab, this methode is called by kref_put
+ * when the number of references drops to zero
+ */
+void free_futex_state(struct kref *kref)
+{
+	struct futex_state *state =
+		container_of(kref, struct futex_state, refcount);
+
+	del_futex_state(state);
+	debug_futex_state("futex_state=%p\n",state);
+	put_futex_key(state->key);
+	kmem_cache_free(kmem_state_key_cache, state->key);
+	kmem_cache_free(kmem_state_cache, state);
+}
+
+/**
+ * futex_state_prio - Set the priority of the futex owner based on its load
+ * @task:	Pointer to the task
+ */
+void futex_state_prio(struct task_struct *task)
+{
+	int load;
+
+	debug_futex_state("let's change the priority of task=%d\n",
+		task_pid_vnr(task));
+
+	load = get_futex_state_sumload(task);
+
+	if (load < 0)
+		load = 0;
+
+	if (load > FUTEX_STATE_MAX_PRIO)
+		load = FUTEX_STATE_MAX_PRIO;
+
+	task->futex_state_prio = load;
+	set_static_prio(task);
+
+	debug_futex_state("task=%d, load=%d, static_prio=%d, normal_prio=%d\n",
+		task_pid_vnr(task), load, task->static_prio, task->normal_prio);
+}
+
+/**
+ * fixup_state_owner_current - Set the current task as owner of the state
+ * @state:	Pointer to the state
+ * 
+ * After set the current task as owner, put the ref
+ * In fact, the owner does not wait anymore on the futex
+ * Decrement the futex load and update the current task priority base on the 
+ * new load
+ */
+int fixup_state_owner_current(struct futex_state *state)
+{
+	int last_owner, sumload;
+	
+	debug_futex_state("let's fixup the owner of state=%p\n", state);
+
+	last_owner = task_pid_vnr(state->owner);
+	sumload = get_futex_state_sumload(current);
+
+	/* Current task became the owner */
+	state->owner = current;
+	add_futex_state(state);
+
+	/* Load decrement */
+	raw_spin_lock(&state->spin_lock);
+	state->load -= (sumload + 1);
+	raw_spin_unlock(&state->spin_lock);
+
+	/* Set the priority */
+	futex_state_prio(state->owner);
+
+
+	/* Current task no longer wait on the futex */
+	kref_put(&state->refcount, free_futex_state);
+	current->waiting_futex_state = NULL;
+
+	debug_futex_state("futex_state=%p, ref=%d, last_owner=%d, new_owner=%d\n",
+		state, kref_read(&state->refcount), last_owner, task_pid_vnr(state->owner));
+
+	return 0;
+}
+
+int futex_state_inherit(struct task_struct *task, 
+				struct futex_state *state,
+				int op)
+{
+	int sumload = 0;
+	struct futex_state *m_state;
+
+	/* Is valid operation */
+	if (op != FUTEX_STATE_LOAD && op != FUTEX_STATE_UNLOAD)
+		return -1;
+
+	debug_futex_state("apply inherit on futex_state=%p, op=%d\n", state, op);
+
+	/* Get the sum of all the futex state load on the task */
+	sumload = get_futex_state_sumload(task);
+
+	/*
+	 * Apply the load inheritance 
+	 * increment the load of the task futex state
+	 * if the futex owner is waiting on a futex, then increment
+	 * his load too, and repeat until the futex owner does not
+	 * wait on a futex, wich will be considered as the master futex owner
+	 */
+	do {
+		m_state = state;
+		raw_spin_lock(&state->spin_lock);
+		state->load += (sumload + 1) * op;
+		raw_spin_unlock(&state->spin_lock);
+		debug_futex_state("do inherit, futex_state=%p, load=%d, owner=%d\n",
+			state, state->load, task_pid_vnr(state->owner));
+	}	while ((state = state->owner->waiting_futex_state) != NULL);
+	
+	futex_state_prio(m_state->owner);
+
+	return 0;
+}
+
+static int get_futex_state(struct task_struct *owner,
+				union futex_key *key,
+				struct futex_state **state_ret)
+{
+	/* Check if the key match a state or it's the first task to wait */
+	fetch_futex_state(owner, key, state_ret);
+	if (!*state_ret) {
+		/* It's the first task to wait so we create the state */
+		*state_ret = kmem_cache_zalloc(kmem_state_cache, GFP_KERNEL);
+		(*state_ret)->key = key;
+		(*state_ret)->owner = owner;
+		(*state_ret)->load = 0;
+		kref_init(&(*state_ret)->refcount);
+		debug_futex_state("create futex_state=%p\n", *state_ret);
+		raw_spin_lock_init(&(*state_ret)->spin_lock);
+		add_futex_state(*state_ret);
+	} else {
+		debug_futex_state("exists futex_state=%p\n", *state_ret);
+		/* Dealloc the state key */
+		put_futex_key(key);
+		kmem_cache_free(kmem_state_key_cache, key);
+		kref_get(&(*state_ret)->refcount);
+	}
+
+	return 0;
+}
 
 /*
  * PI code:
@@ -2716,7 +2944,21 @@ static int futex_lock_pi(u32 __user *uaddr, unsigned int flags,
 	struct rt_mutex_waiter rt_waiter;
 	struct futex_hash_bucket *hb;
 	struct futex_q q = futex_q_init;
+	struct task_struct *owner;
+	struct futex_state *state = NULL;
+	union futex_key *key;
 	int res, ret;
+	u32 uval, vpid;
+
+	/* Alloc memory for the state key */
+	key = kmem_cache_zalloc(kmem_state_key_cache, GFP_KERNEL);
+	/* Get the user value of the lock */
+	if (get_user(uval, uaddr))
+		return -EFAULT;
+	/* Get the owner pid of the lock  */
+	vpid = uval & FUTEX_TID_MASK;
+	/* Get the owner task_struct */
+	owner = find_task_by_vpid(vpid);
 
 	if (!IS_ENABLED(CONFIG_FUTEX_PI))
 		return -ENOSYS;
@@ -2735,8 +2977,34 @@ static int futex_lock_pi(u32 __user *uaddr, unsigned int flags,
 retry:
 	ret = get_futex_key(uaddr, flags & FLAGS_SHARED, &q.key, VERIFY_WRITE);
 	if (unlikely(ret != 0))
-		goto out;
+		goto out_dealloc_key;
 
+	/*
+	 * get or create the futex state for the futex owner
+	 * calcul his load and set the priority based on
+	 */ 
+	if (FUTEX_STATE_ENABLE) {
+		/* 
+		* For security we do not use the futex_q.key 'q.key'
+		* by using our own key we can manage his deallocation
+		*/
+		ret = get_futex_key(uaddr, 0, key, VERIFY_READ);
+		if (unlikely(ret != 0))
+			goto out_dealloc_put_key;
+
+		/* Get the futex state associed to the key, if not exists creating one */
+		get_futex_state(owner, key, &state);
+		/* Current task will be waiting on the futex state */
+		current->waiting_futex_state = state;
+		/* Apply the load inherit */
+		futex_state_inherit(current, state, FUTEX_STATE_LOAD);
+
+		debug_futex_state("current task will wait on futex_state=%p, load=%d, \
+					owner=%d, owner->normal_prio=%d\n",
+					state, state->load,
+		task_pid_vnr(state->owner), state->owner->normal_prio);
+	}
+	
 retry_private:
 	hb = queue_lock(&q);
 
@@ -2750,6 +3018,11 @@ retry_private:
 		case 1:
 			/* We got the lock. */
 			ret = 0;
+			/* Put this task as owner of futex state */
+			if (FUTEX_STATE_ENABLE) {
+				debug_futex_state("got the lock without waiting\n");
+				fixup_state_owner_current(state);
+			}
 			goto out_unlock_put_key;
 		case -EFAULT:
 			goto uaddr_faulted;
@@ -2835,6 +3108,11 @@ no_block:
 	 * haven't already.
 	 */
 	res = fixup_owner(uaddr, &q, !ret);
+
+	/* Put this task as owner of futex state */
+	if (FUTEX_STATE_ENABLE)
+		fixup_state_owner_current(state);
+
 	/*
 	 * If fixup_owner() returned an error, proprogate that.  If it acquired
 	 * the lock, clear our -ETIMEDOUT or -EINTR.
@@ -2873,6 +3151,16 @@ out:
 	}
 	return ret != -EINTR ? ret : -ERESTARTNOINTR;
 
+out_dealloc_key:
+	/* Dealloc the state key */
+	kmem_cache_free(kmem_state_key_cache, key);
+	goto out;
+
+out_dealloc_put_key:
+	/* Dealloc the state key */
+	kmem_cache_free(kmem_state_key_cache, key);
+	goto out_put_key;
+
 uaddr_faulted:
 	queue_unlock(hb);
 
@@ -2884,6 +3172,7 @@ uaddr_faulted:
 		goto retry_private;
 
 	put_futex_key(&q.key);
+	put_futex_key(key);
 	goto retry;
 }
 
@@ -2898,6 +3187,7 @@ static int futex_unlock_pi(u32 __user *uaddr, unsigned int flags)
 	union futex_key key = FUTEX_KEY_INIT;
 	struct futex_hash_bucket *hb;
 	struct futex_q *top_waiter;
+	struct futex_state *state;
 	int ret;
 
 	if (!IS_ENABLED(CONFIG_FUTEX_PI))
@@ -2909,6 +3199,7 @@ retry:
 	/*
 	 * We release only a lock we actually own:
 	 */
+	
 	if ((uval & FUTEX_TID_MASK) != vpid)
 		return -EPERM;
 
@@ -2918,6 +3209,21 @@ retry:
 
 	hb = hash_futex(&key);
 	spin_lock(&hb->lock);
+
+	/*
+	 * release the futex state if exists
+	 */ 
+	if (FUTEX_STATE_ENABLE) {
+		fetch_futex_state(current, &key, &state);
+		if (state) {
+			del_futex_state(state);
+			debug_futex_state("futex_state=%p\n", state);
+			/* When release a futex the load change, set the new priority */
+			futex_state_prio(current);
+		} else {
+			debug_futex_state("no futex state to unlock\n");
+		}
+	}
 
 	/*
 	 * Check waiters first. We do not trust user space values at
@@ -3634,6 +3940,16 @@ static int __init futex_init(void)
 		plist_head_init(&futex_queues[i].chain);
 		spin_lock_init(&futex_queues[i].lock);
 	}
+
+	/*
+	 * init slab
+	 */
+	kmem_state_cache = KMEM_CACHE(futex_state, 0);
+	kmem_state_key_cache = kmem_cache_create("futex_key",
+			sizeof(union futex_key),
+			__alignof__(union futex_key),
+			0,
+			NULL);
 
 	return 0;
 }
