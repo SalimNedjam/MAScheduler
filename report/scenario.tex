@@ -1,0 +1,88 @@
+\section{Scénario}
+
+Dans la suite du rapport nous considérons avoir trois tâches: A, B et C. 
+L'objectif présenté par les scénarios est de favoriser
+la ou les tâches qui détiennent un verrou pour débloquer rapidement le fil d'exécution
+des autres tâches potentiellement en attente, tout en ne dénaturant pas les principes
+clés du CFS.
+
+\subsection{Monocœur}
+
+Considérons un monoprocesseur où les tâches A et C ont une priorité de 120 et 
+B une priorité de 100. La tâche A détient un verrou.
+Le taux de CPU attribué aux tâche A et C sera le même, cependant A doit être
+la tâche cible de notre modification, pour que celle-ci soit favorisé lors
+de l'élection par rapport à C. Cependant, la modification apportée ne doit pas 
+être une gêne pour l'avancement de B, qui est lui de base, est plus prioritaire.
+
+\subsection{Multicœur}
+
+Considérons un processeur avec deux cœurs où les tâches A et B sont des lots
+d'exécutions contenant chacun 5 threads, avec la même priorité.
+Le taux CPU attribué aux deux tâches est le même. Aucun des threads de A ne prend de verrou.
+Au bout d'un certains temps un thread de B prend un verrou, bloquant tous les autres threads de B.
+Il faudra 100 \verb|timeslice| pour le thread propriétaire du verrou pour exécuter sa section
+critique et ainsi relâcher le verrou, débloquant tous les autres threads de B.
+Si les 5 threads de A s'exécutent chacun en 10 \verb|timeslice| alors le thread A se terminera
+avant la libération du verrou de B. Ainsi, la tâche A va libérer son cœur et ce dernier n'exécutera
+aucune instruction avant que les threads de B ne soit débloqués.
+Notre solutions doit donc éviter le gâchis de cœur. En favorisant B ce dernier va exécuter
+sa section critique plus rapidement, permettant ainsi de finir avant, ou en même temps, que le thread A.
+Lorsque A finira son exécution les autres threads de B, débloqués, pourront utiliser le cœur libéré.
+
+\subsection{Charge}
+
+Notre solution pour influencer la priorité d'une tâche, tout en restant équitable,
+est d'introduire un système de charge à chaque verrou.
+
+\subsubsection{Augmentation de la priorité}
+
+Pour reprendre le scénario du monoprocesseur nous pouvons envisager de favoriser la tâche A, détenant un verrou,
+en augmentant sa priorité. Cette augmentation ne doit cependant pas être un inconvénient pour B,
+plus prioritaire. Une augmentation d'une valeur de 10 est un bon compromis. La tâche A
+devient alors plus prioritaire que C sans dépasser B.
+
+Cependant, si C détient lui aussi un verrou, et que A et C bloquent respectivement 
+10 et 100 tâches, alors augmenter la priorité de 10 au deux tâches semble non équitable
+étant donné que C bloque plus de tâches que A. Ainsi, une augmentation dans un
+intervalle de 0 à 10 est plus cohérent. La tâche A aura une priorité augmentée
+de 2 contre 10 pour C. Cette augmentation de priorité sera déterminé
+avec un système de \textbf{charge}.
+
+Une autre solution aurait pu être de modifier directement la valeur \verb|vruntime|
+pour forcer la tâche à être à gauche de l'arbre \verb|rbtree| et ainsi assurer sa
+réélection. Cependant, cela implique que la tâche passera devant tous les autres tâches,
+y compris celles plus prioritaires. Cette solution écrase toute la logique du système
+de priorité mis en place par le scheduler et donc n'a pas été retenue.
+
+
+\subsubsection{Calcul de charge}
+
+Chaque tâche propriétaire d'un verrou se verra attribuer une charge, celle-ci évoluera en fonction
+des tâches bloquées sur le verrou. Plus une tâche a une charge élevée, plus sa priorité augmente.
+
+L'implémentation du calcul de charge est assez simple. 
+La charge correspondra au nombre total de tâches couramment bloquées sur le verrou. 
+Ainsi, la priorité ajoutée sera dans l'intervalle de 0 à 10: une tâche bloquée augmentera
+la priorité de 1, bornant l'augmentation à 10 tâches bloquées.
+
+
+\subsubsection{Héritage de charge}
+
+Pour rendre le système de charge plus efficace nous introduisons un héritage
+de charge entre les tâches. Considérons que B détient un verrou et se bloque
+en essayant de prendre un deuxième verrou détenu par A. Alors A verra sa
+charge augmenter par la valeur celle de B. Ainsi, la tâche A sera plus favorisée même
+si A et B ont la même priorité et la même charge au départ. Si une troisième tâche C,
+ne détenant pas de verrou, se bloque sur le verrou détenu par A, alors l'héritage fera incrémenter
+de 1 la charge de A et de B.
+
+Dans le même principe, si C meurt avant d'avoir récupéré le verrou, alors un deshéritage est
+appliqué: A et B voient leur charge décrémenter de 1.
+
+L'héritage de charge est très utile mais demande aussi d'être très précis.
+En effet, si la charge d'une tâche est incorrecte par rapport à la réalité
+(i.e. la valeur ne correspond pas au nombre de tâches bloquées)
+alors l'héritage ne peut qu'aggraver l'erreur. Il est très important
+de s'assurer que la charge est valide en la décrémentant lorsqu'une tâche 
+n'attend plus sur le verrou, notamment lorsque la tâche meurt avant de l'avoir pris.

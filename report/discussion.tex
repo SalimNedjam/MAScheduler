@@ -1,0 +1,66 @@
+\section{Discussion}
+
+Nous concluons ce projet par un bilan sur sa réalisation et ses résultats ainsi qu'une discussion sur 
+ses limites et les améliorations envisageables.
+
+\subsection{Conclusion et limite}
+
+La réalisation du projet s'est bien déroulé, toutes les fonctionnalités attendues on été
+implémentées. Nous avons vu les limites du CFS, notamment lors de forte contention, et nous avons réussi à mettre en 
+œuvre une solution simple mais fiable pour résoudre cette faiblesse. Les résultats qu'on a pu tirer de notre mécanisme sont globalement concluant contenu des objectifs que l'on s'est fixés au départ.
+
+Cependant le projet a montré des limites, notamment sur la manipulation de la liste \verb|futex_state_list| d'une tâche.
+Son utilisation requière la prise du verrou \verb|futex_state_lock|.
+Ainsi, lors de la recherche, d'un ajout ou d'une suppression d'un \verb|futex_state|
+sur la liste mais aussi lors du calcul de la somme, le verrou est pris. Cela empêche d'autres tâches bloquées
+sur la même tâche propriétaire d'y accéder. Créant ainsi des groupes de tâches à cette prise de
+verrou commun. Il y a donc un risque de contention entre ces tâches.
+
+Dans les premières implémentations nous avions créé un liste globale, recensant l'ensemble des \verb|futex_state| quelque soit
+leur propriétaire. Sa manipulation était donc commune à toutes les tâches, en plus du manque de performance de 
+cette méthode, le problème de contention était d'autant plus présent. L'utilisation des listes, dites locales, à chaque
+propriétaire permet de réduire ce problème de contention. Cependant le risque persiste et aucune solution 
+viable nous semble contourner ce problème pour le moment.
+
+\subsection{Travaux à court terme}
+Par manque de temps certaines tâches n'ont pas pu être réalisées dans le temps imparti.
+Leur implémentation n'ont pas d'impact majeur et elles ont donc été laissé pour les travaux à court terme.
+
+\subsubsection{Poids}
+La clé de voûte de notre implémentation est son système de poids.
+Lors de l'héritage nous avons vu que la tâche qui va se bloquer doit calculer la somme
+des poids des \verb|futex_state| qu'elle détient, représenté ensuite par une variable \verb|sumload|.
+Ce calcul est effectué plusieurs fois, et demande de parcourir la liste des \verb|futex_state| de la tâche.
+Or, nous pouvons réduire ces calculs par un champs dans la structure \verb|task_struct| qui représenterai
+la valeur \verb|sumload| à tout instant. Cette variable serait mis à jour lors de l'héritage, deshéritage,
+ajout et suppression de \verb|futex_state|.
+
+\subsubsection{Généralisation}
+Par manque de temps l'implémentation n'a été qu'effectué que pour l'utilisation des mutex de type PI 
+(héritage de priorité). Un travail à court terme serait de le rendre
+fonctionnel pour l'utilisation des mutex de type ROBUST, soit le protocole par défaut.
+
+Cette décision est une question de débogage, nous permettant 
+de tester notre implémentation volontairement avec des programmes tests en utilisant
+des mutex PI. En effet, en implémentant le mécanisme, en cours de développement,
+ pour le type ROBUST le kernel l'aurait utilisé, ce qui aurait compliqué le débogage lors d'éventuelles erreurs.
+
+\subsection{Travaux à long terme: les priorités}
+L'implémentation actuelle du changement de priorité d'une tâche par la fonction \verb|futex_state_prio(task)| 
+est très simpliste. Elle réside en une réduction de la \verb|static_prio| par le \verb|sumload| 
+borné sur 20.
+
+Pour rendre plus juste la modification de la priorité nous pouvons envisager l'utilisation d'une formule.
+Une approche peut consister à attribuer un coefficient à chaque tâche bloquée. 
+Ce coefficient est calculé en fonction de la priorité de la tâche. 
+Plus la tâche est prioritaire et plus son coefficient est élevé.
+Le poids qu'ajoutera la tâche bloquée au \verb|futex_state| du propriétaire dépendra de son coefficient.
+Ainsi par exemple, une tâche de priorité 120 ajoutera 1 au poids, tandis qu'une tâche de priorité 100
+ajoutera 2. 
+
+Ce système permet d'être encore plus équitable entre les tâches. Deux tâches de même priorité bloquant
+le même nombre de tâches auront un \verb|sumload| différent en fonction des priorités des tâches qu'elles bloquent.
+
+Cette nouvelle approche complexifie le mécanisme, notamment si une tâche bloquée voit sa priorité modifiée
+lorsqu'elle dort, son coefficient devra être mis à jour en conséquent.
+

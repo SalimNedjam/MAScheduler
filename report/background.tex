@@ -1,0 +1,73 @@
+\section{Background}
+
+\subsection{User: glibc et mutex}
+La glibc est une librairie qui offre un panel de fonctionnalités. 
+Celle des verrous (mutex) nous intéresse particulièrement: elle permet 
+d'abstraire aux programmeurs l'utilisation complexe des verrous côté kernel.
+
+Il existe plusieurs types de mutex proposés à l'utilisateur, voici une liste non exhaustive:
+\begin{enumerate}
+	\item TIMED: type par défaut, prend le verrou de manière bloquante.
+	\item RECURSIVE: ne tente pas de prendre le verrou si celui-ci est
+	déjà détenu par le processus courant.
+	\item ADAPTIVE: correspond à la méthode de prise de verrou 'trylock',
+	au bout d'un certain nombre d'échec la prise de verrou se fait
+	bloquante.
+\end{enumerate}
+Le choix du type de mutex se fait lors de l'initialisation du verrou.
+On peut combiner ces types externes avec des types internes qui permettent de
+modifier le comportement du verrou jusqu'au kernel, notamment les types:
+
+\begin{enumerate}
+	\item ROBUST: type par défaut, si le propriétaire du verrou meurt sans
+	le relâcher la prochaine demande à se verrou sera accepté sans appel
+	système.
+	\item PI (Priority Inheritance): la priorité du processus détenant le
+	verrou est augmenté à la plus grande priorité parmi les processus
+	bloqués sur le verrou.
+\end{enumerate}
+Ces deux types insèrent le \textit{pid} du propriétaire du verrou
+directement dans la valeur du verrou. Ainsi, lors des appels systèmes le kernel
+peut connaître le \textit{pid} du propriétaire du verrou avec une simple
+opération de flag sur la valeur passée.
+
+En tenant compte de ces éléments on peut donc en déduire que la modification 
+de la partie glibc n'est pas nécessaire. En effet, le \textit{pid} du 
+propriétaire du verrou étant déjà communiqué il nous suffit de le récupérer 
+côté kernel. Ainsi, cela permet à notre future solution de ne pas dépendre de 
+modification ou de décoration d'une fonctionnalité de la glibc, et d'éviter
+des dépendances dur à maintenir entre la glibc et le kernel
+
+\subsection{Kernel: futex}
+
+La glibc peut communiquer avec le kernel à travers des appels systèmes pour effectuer certaines tâches.
+Un appel système est coûteux, ce qui force la glibc à réduire son utilisation.
+
+Considérons un processus A et B, où A détient un mutex et B souhaite l'acquérir. 
+Observons le comportement de la glibc et du kernel.
+
+Lorsqu'un processus va essayer de prendre un mutex la glibc va faire un test and set atomique sur sa valeur. 
+En fonction de cette dernière la gblic déterminera s'il est nécessaire de faire un appel système. 
+
+Dans un premier temps A prend le mutex, sa valeur vaut 0. A peut donc immédiatement l'acquérir et placer
+la valeur 1 pour indiquer que le mutex est occupé.
+
+Lorsque B souhaitera prendre le mutex il constatera une valeur à 1, B doit donc s'endormir. Cette opération
+nécessite un appel système vers le kernel. Avant l'appel, B prend soin de placer la valeur 2 dans le mutex
+afin d'indiquer que des processus attendent sur ce dernier.
+
+Dans l'appel système effectué par B, l'adresse virtuelle de l'espace utilisateur qui contient
+la valeur du mutex est passée en paramètre. Cette adresse permet au kernel de récupérer la valeur du mutex, et avec une opération bit à bit, le pid du propriétaire. 
+Le kernel utilise l'adresse pour générer et identifier le futex d'une manière unique grâce à une \verb|futex_key|.
+Grâce à cela le kernel endort le processus B et le représente par une structure \verb|futex_q| qui attend sur le futex.
+
+Lorsque A relâche le mutex il constatera une valeur à 2, lui indiquant qu'un ou plusieurs processus
+attendent sur le mutex. Il est donc nécessaire de faire un appel système pour réveiller ces processus.
+Le kernel réveillera les processus associés aux \verb|futex_q|.
+Si la valeur du mutex aurait été de 1 alors A aurait placé la valeur 0 sans effectuer d'appel système.
+
+Le processus B est réveillé et deviendra le propriétaire du mutex.
+
+Grâce à ce mécanisme la glibc fait des appels système uniquement si d'autres processus
+attendent sur le mutex.
+
